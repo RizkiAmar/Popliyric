@@ -1,0 +1,17 @@
+{
+  "name": "Popliyric",
+  "description": "Synchronized lyrics in a compact Picture-in-Picture player for Spicetify.",
+  "preview": "preview.svg",
+  "main": "popliyric.js",
+  "readme": "README.md",
+  "authors": [
+    {
+      "name": "Rizki Amar"
+    }
+  ],
+  "tags": [
+    "lyrics",
+    "music",
+    "player"
+  ]
+}

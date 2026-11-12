@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760" role="img" aria-labelledby="title description">
+  <title id="title">Popliyric compact and expanded player</title>
+  <desc id="description">A compact horizontal pill with vinyl artwork and a lyric preview beside an expanded lyrics and playback panel.</desc>
+  <defs>
+    <linearGradient id="backdrop" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#101217"/><stop offset="1" stop-color="#1c2028"/></linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#df7b61"/><stop offset=".5" stop-color="#936273"/><stop offset="1" stop-color="#404d72"/></linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#292d35"/><stop offset="1" stop-color="#17191f"/></linearGradient>
+    <linearGradient id="wipe" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset=".58" stop-color="#ffffff"/><stop offset=".58" stop-color="#9298a0"/><stop offset="1" stop-color="#9298a0"/></linearGradient>
+    <radialGradient id="disc"><stop offset=".55" stop-color="#0b0c0f"/><stop offset=".57" stop-color="#27292d"/><stop offset=".60" stop-color="#090a0d"/><stop offset=".70" stop-color="#1d1f23"/><stop offset=".73" stop-color="#090a0d"/><stop offset=".86" stop-color="#1d1f23"/><stop offset=".9" stop-color="#08090b"/><stop offset="1" stop-color="#181a1d"/></radialGradient>
+    <filter id="shadow" x="-30%" y="-40%" width="160%" height="200%"><feDropShadow dx="0" dy="14" stdDeviation="16" flood-color="#000" flood-opacity=".42"/></filter>
+    <style>
+      .ui{font-family:Inter,Segoe UI,Arial,sans-serif}.white{fill:#f5f5f5}.muted{fill:#a1a1aa}.dim{fill:#9298a0}.label{font-size:12px;font-weight:600;letter-spacing:1.2px}.title{font-size:15px;font-weight:600}.body{font-size:14px}.small{font-size:12px}
+    </style>
+  </defs>
+  <rect width="1200" height="760" rx="28" fill="url(#backdrop)"/>
+  <text x="72" y="80" class="ui white" font-size="30" font-weight="650">Popliyric</text>
+  <text x="72" y="112" class="ui muted" font-size="15">Synchronized lyrics in a compact Spicetify player</text>
+
+  <text x="72" y="190" class="ui label muted">COMPACT</text>
+  <g filter="url(#shadow)"><rect x="72" y="212" width="500" height="92" rx="46" fill="url(#panel)" stroke="#ffffff24"/></g>
+  <circle cx="124" cy="258" r="30" fill="url(#disc)"/>
+  <circle cx="124" cy="258" r="22.5" fill="url(#accent)"/>
+  <circle cx="124" cy="258" r="3" fill="#111216"/>
+  <text x="170" y="253" class="ui white title">I just want some fried noodles</text>
+  <text x="170" y="276" class="ui dim small">The current lyric wraps naturally in the pill</text>
+  <circle cx="530" cy="258" r="17" fill="#ffffff0d"/>
+  <path d="M525 256l5 5 5-5" fill="none" stroke="#d7d9df" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="72" y="345" class="ui muted small">Album artwork • current lyric preview • integrated expand control</text>
+
+  <text x="714" y="80" class="ui label muted">EXPANDED</text>
+  <g filter="url(#shadow)"><rect x="714" y="104" width="414" height="556" rx="30" fill="url(#panel)" stroke="#ffffff24"/></g>
+  <rect x="715" y="105" width="412" height="555" rx="29" fill="url(#accent)" opacity=".08"/>
+  <circle cx="769" cy="158" r="29" fill="url(#disc)"/>
+  <circle cx="769" cy="158" r="21.75" fill="url(#accent)"/>
+  <circle cx="769" cy="158" r="3" fill="#111216"/>
+  <text x="814" y="154" class="ui white title">Fried Noodles</text>
+  <text x="814" y="176" class="ui muted small">Pink Guy</text>
+  <text x="814" y="194" class="ui dim small">Pink Season</text>
+  <circle cx="1084" cy="157" r="17" fill="#ffffff0d"/>
+  <path d="M1079 159l5-5 5 5" fill="none" stroke="#d7d9df" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <rect x="738" y="220" width="366" height="315" rx="18" fill="#07080b70" stroke="#ffffff0d"/>
+  <text x="760" y="265" class="ui dim body">Put the noodles in the pot</text>
+  <text x="760" y="309" class="ui" font-size="16" font-weight="600" fill="url(#wipe)">I just want some fried noodles</text>
+  <text x="760" y="354" class="ui dim body">Stir it up and let it cook</text>
+  <text x="760" y="398" class="ui dim body">Add a little bit of flavor</text>
+  <text x="760" y="442" class="ui dim body">Make it hot and serve it up</text>
+  <text x="760" y="486" class="ui dim body">I just want some fried noodles</text>
+  <text x="738" y="558" class="ui dim small">1:24</text>
+  <rect x="776" y="552" width="288" height="3" rx="2" fill="#ffffff2e"/>
+  <rect x="776" y="552" width="126" height="3" rx="2" fill="#f5f5f5"/>
+  <text x="1075" y="558" class="ui dim small">3:12</text>
+  <g class="ui" fill="#e5e7eb">
+    <path d="M816 591h3v20h-3zM838 592v18l-17-9z"/>
+    <path d="M982 592v18l17-9zM999 591h3v20h-3z"/>
+  </g>
+  <path d="M901 591v20l17-10z" fill="#e5e7eb"/>
+  <text x="72" y="710" class="ui muted small">Document PiP behavior and window placement depend on Spotify's embedded browser.</text>
+</svg>
