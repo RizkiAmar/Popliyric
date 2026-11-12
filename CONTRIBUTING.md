@@ -49,4 +49,4 @@ Describe the user problem, expected behavior, and any effect on the compact or e
 - Update the README or changelog when user-visible behavior changes.
 - Run a JavaScript syntax check and test the change inside Spotify when possible.
 - Report which test cases were run and distinguish live results from static checks.
-- Do not remove or rewrite the original Electron reference as part of a native-extension change.
+- Keep changes focused on Popliyric and document user-visible changes in the README or changelog.
