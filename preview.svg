@@ -1,59 +1,122 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760" role="img" aria-labelledby="title description">
-  <title id="title">Popliyric compact and expanded player</title>
-  <desc id="description">A compact horizontal pill with vinyl artwork and a lyric preview beside an expanded lyrics and playback panel.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1200" height="760" viewBox="0 0 1200 760" role="img" aria-labelledby="title description">
+  <title id="title">Popliyric v2 compact and expanded player</title>
+  <desc id="description">Three compact player variants with square artwork and a vinyl record sliding out behind it, next to the expanded player with large artwork, a Next chip, a glass lyrics panel, and a glass playback bar. Artwork, lyrics, and names are placeholders.</desc>
   <defs>
     <linearGradient id="backdrop" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#101217"/><stop offset="1" stop-color="#1c2028"/></linearGradient>
-    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#df7b61"/><stop offset=".5" stop-color="#936273"/><stop offset="1" stop-color="#404d72"/></linearGradient>
-    <linearGradient id="panel" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#292d35"/><stop offset="1" stop-color="#17191f"/></linearGradient>
-    <linearGradient id="wipe" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset=".58" stop-color="#ffffff"/><stop offset=".58" stop-color="#9298a0"/><stop offset="1" stop-color="#9298a0"/></linearGradient>
-    <radialGradient id="disc"><stop offset=".55" stop-color="#0b0c0f"/><stop offset=".57" stop-color="#27292d"/><stop offset=".60" stop-color="#090a0d"/><stop offset=".70" stop-color="#1d1f23"/><stop offset=".73" stop-color="#090a0d"/><stop offset=".86" stop-color="#1d1f23"/><stop offset=".9" stop-color="#08090b"/><stop offset="1" stop-color="#181a1d"/></radialGradient>
-    <filter id="shadow" x="-30%" y="-40%" width="160%" height="200%"><feDropShadow dx="0" dy="14" stdDeviation="16" flood-color="#000" flood-opacity=".42"/></filter>
+    <linearGradient id="art-bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#22a5c9"/><stop offset="1" stop-color="#0f6a8e"/></linearGradient>
+    <linearGradient id="art-none" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#2c3a44"/><stop offset="1" stop-color="#1a232b"/></linearGradient>
+    <linearGradient id="pill-color" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#3f7a82"/><stop offset=".48" stop-color="#17688b"/><stop offset="1" stop-color="#7a5f12"/></linearGradient>
+    <linearGradient id="pill-neutral" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#46535c"/><stop offset=".5" stop-color="#2f3d47"/><stop offset="1" stop-color="#1f2a32"/></linearGradient>
+    <linearGradient id="shade" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#06161f" stop-opacity=".4"/><stop offset="1" stop-color="#06161f" stop-opacity=".65"/></linearGradient>
+    <linearGradient id="glass" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fff" stop-opacity=".18"/><stop offset="1" stop-color="#fff" stop-opacity=".06"/></linearGradient>
+    <linearGradient id="wipe" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#fff"/><stop offset=".58" stop-color="#fff"/><stop offset=".58" stop-color="#cbd8de"/><stop offset="1" stop-color="#cbd8de"/></linearGradient>
+    <radialGradient id="grooves"><stop offset="0" stop-color="#08090a"/><stop offset=".4" stop-color="#1a1b1d"/><stop offset=".45" stop-color="#08090a"/><stop offset=".55" stop-color="#232528"/><stop offset=".6" stop-color="#08090a"/><stop offset=".7" stop-color="#1a1b1d"/><stop offset=".75" stop-color="#08090a"/><stop offset=".85" stop-color="#232528"/><stop offset=".9" stop-color="#08090a"/><stop offset="1" stop-color="#1a1b1d"/></radialGradient>
+    <filter id="shadow" x="-20%" y="-30%" width="140%" height="170%"><feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000" flood-opacity=".45"/></filter>
+    <filter id="cover-shadow" x="-30%" y="-30%" width="170%" height="160%"><feDropShadow dx="5" dy="0" stdDeviation="5" flood-color="#000" flood-opacity=".4"/></filter>
+    <filter id="soft" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="38"/><feColorMatrix type="saturate" values="1.5"/></filter>
+    <symbol id="art" viewBox="0 0 100 100">
+      <rect width="100" height="100" fill="url(#art-bg)"/>
+      <path d="M48 100L100 32v40L80 100z" fill="#f2b61c"/>
+      <path d="M0 64v36h32z" fill="#eadba9"/>
+      <circle cx="68" cy="32" r="13" fill="#10161c"/>
+    </symbol>
+    <symbol id="note" viewBox="0 0 24 24"><path d="M9 18V6l10-2v12" fill="none" stroke="#9fb0ba" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="6.5" cy="18" r="2.5" fill="none" stroke="#9fb0ba" stroke-width="1.6"/><circle cx="16.5" cy="16" r="2.5" fill="none" stroke="#9fb0ba" stroke-width="1.6"/></symbol>
+    <symbol id="chevron-down" viewBox="0 0 16 16"><path d="M3.25 6L8 10.75 12.75 6" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <clipPath id="pill-cover-clip"><rect width="72" height="72"/></clipPath>
+    <clipPath id="label-clip"><circle cx="74" cy="36" r="11"/></clipPath>
+    <clipPath id="card-clip"><rect width="448" height="342"/></clipPath>
+    <clipPath id="large-cover-clip"><rect x="16" y="16" width="150" height="150" rx="18"/></clipPath>
     <style>
-      .ui{font-family:Inter,Segoe UI,Arial,sans-serif}.white{fill:#f5f5f5}.muted{fill:#a1a1aa}.dim{fill:#9298a0}.label{font-size:12px;font-weight:600;letter-spacing:1.2px}.title{font-size:15px;font-weight:600}.body{font-size:14px}.small{font-size:12px}
+      .ui{font-family:Inter,Segoe UI,Arial,sans-serif}.white{fill:#fff}.soft{fill:#d3e0e6}.muted{fill:#a1a1aa}.label{font-size:12px;font-weight:600;letter-spacing:1.2px}
     </style>
+    <g id="vinyl">
+      <circle cx="74" cy="36" r="30" fill="url(#grooves)"/>
+      <path d="M74 36L95 15A30 30 0 0 1 102 27z" fill="#fff" opacity=".12"/>
+    </g>
   </defs>
+
   <rect width="1200" height="760" rx="28" fill="url(#backdrop)"/>
-  <text x="72" y="80" class="ui white" font-size="30" font-weight="650">Popliyric</text>
-  <text x="72" y="112" class="ui muted" font-size="15">Synchronized lyrics in a compact Spicetify player</text>
+  <text x="56" y="84" class="ui white" font-size="30" font-weight="700">Popliyric</text>
+  <text x="56" y="114" class="ui muted" font-size="15">Synchronized lyrics in a floating Spicetify player</text>
 
-  <text x="72" y="190" class="ui label muted">COMPACT</text>
-  <g filter="url(#shadow)"><rect x="72" y="212" width="500" height="92" rx="46" fill="url(#panel)" stroke="#ffffff24"/></g>
-  <circle cx="124" cy="258" r="30" fill="url(#disc)"/>
-  <circle cx="124" cy="258" r="22.5" fill="url(#accent)"/>
-  <circle cx="124" cy="258" r="3" fill="#111216"/>
-  <text x="170" y="253" class="ui white title">I just want some fried noodles</text>
-  <text x="170" y="276" class="ui dim small">The current lyric wraps naturally in the pill</text>
-  <circle cx="530" cy="258" r="17" fill="#ffffff0d"/>
-  <path d="M525 256l5 5 5-5" fill="none" stroke="#d7d9df" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-  <text x="72" y="345" class="ui muted small">Album artwork • current lyric preview • integrated expand control</text>
+  <text x="56" y="172" class="ui label muted">COMPACT</text>
 
-  <text x="714" y="80" class="ui label muted">EXPANDED</text>
-  <g filter="url(#shadow)"><rect x="714" y="104" width="414" height="556" rx="30" fill="url(#panel)" stroke="#ffffff24"/></g>
-  <rect x="715" y="105" width="412" height="555" rx="29" fill="url(#accent)" opacity=".08"/>
-  <circle cx="769" cy="158" r="29" fill="url(#disc)"/>
-  <circle cx="769" cy="158" r="21.75" fill="url(#accent)"/>
-  <circle cx="769" cy="158" r="3" fill="#111216"/>
-  <text x="814" y="154" class="ui white title">Fried Noodles</text>
-  <text x="814" y="176" class="ui muted small">Pink Guy</text>
-  <text x="814" y="194" class="ui dim small">Pink Season</text>
-  <circle cx="1084" cy="157" r="17" fill="#ffffff0d"/>
-  <path d="M1079 159l5-5 5 5" fill="none" stroke="#d7d9df" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-
-  <rect x="738" y="220" width="366" height="315" rx="18" fill="#07080b70" stroke="#ffffff0d"/>
-  <text x="760" y="265" class="ui dim body">Put the noodles in the pot</text>
-  <text x="760" y="309" class="ui" font-size="16" font-weight="600" fill="url(#wipe)">I just want some fried noodles</text>
-  <text x="760" y="354" class="ui dim body">Stir it up and let it cook</text>
-  <text x="760" y="398" class="ui dim body">Add a little bit of flavor</text>
-  <text x="760" y="442" class="ui dim body">Make it hot and serve it up</text>
-  <text x="760" y="486" class="ui dim body">I just want some fried noodles</text>
-  <text x="738" y="558" class="ui dim small">1:24</text>
-  <rect x="776" y="552" width="288" height="3" rx="2" fill="#ffffff2e"/>
-  <rect x="776" y="552" width="126" height="3" rx="2" fill="#f5f5f5"/>
-  <text x="1075" y="558" class="ui dim small">3:12</text>
-  <g class="ui" fill="#e5e7eb">
-    <path d="M816 591h3v20h-3zM838 592v18l-17-9z"/>
-    <path d="M982 592v18l17-9zM999 591h3v20h-3z"/>
+  <!-- Pill: synchronized lyric, playing -->
+  <g transform="translate(56 190) scale(1.2)">
+    <rect x=".5" y=".5" width="377" height="71" fill="url(#pill-color)" stroke="#fff" stroke-opacity=".24" filter="url(#shadow)"/>
+    <use href="#vinyl" xlink:href="#vinyl"/>
+    <g clip-path="url(#label-clip)"><use href="#art" xlink:href="#art" x="63" y="25" width="22" height="22"/></g>
+    <g filter="url(#cover-shadow)"><g clip-path="url(#pill-cover-clip)"><use href="#art" xlink:href="#art" width="72" height="72"/></g></g>
+    <text x="220" y="32" text-anchor="middle" class="ui white" font-size="15" font-weight="600">Neon rain on the avenue,</text>
+    <text x="220" y="52" text-anchor="middle" class="ui" fill="#cbd8de" font-size="15" font-weight="600">I keep walking home</text>
+    <use href="#chevron-down" xlink:href="#chevron-down" x="335" y="28" width="16" height="16"/>
   </g>
-  <path d="M901 591v20l17-10z" fill="#e5e7eb"/>
-  <text x="72" y="710" class="ui muted small">Document PiP behavior and window placement depend on Spotify's embedded browser.</text>
+  <text x="56" y="306" class="ui muted" font-size="12">Synchronized lyric with line wipe · vinyl spins while playing</text>
+
+  <!-- Pill: no lyrics -->
+  <g transform="translate(56 336) scale(1.2)">
+    <rect x=".5" y=".5" width="377" height="71" fill="url(#pill-color)" stroke="#fff" stroke-opacity=".24" filter="url(#shadow)"/>
+    <use href="#vinyl" xlink:href="#vinyl"/>
+    <g clip-path="url(#label-clip)"><use href="#art" xlink:href="#art" x="63" y="25" width="22" height="22"/></g>
+    <g filter="url(#cover-shadow)"><g clip-path="url(#pill-cover-clip)"><use href="#art" xlink:href="#art" width="72" height="72"/></g></g>
+    <text x="220" y="33" text-anchor="middle" class="ui white" font-size="14" font-weight="600">Midnight Static</text>
+    <text x="220" y="51" text-anchor="middle" class="ui soft" font-size="12">Kira Halden · Violet Harbor</text>
+    <use href="#chevron-down" xlink:href="#chevron-down" x="335" y="28" width="16" height="16"/>
+  </g>
+  <text x="56" y="452" class="ui muted" font-size="12">No lyrics: title and artist</text>
+
+  <!-- Pill: no artwork -->
+  <g transform="translate(56 482) scale(1.2)">
+    <rect x=".5" y=".5" width="377" height="71" fill="url(#pill-neutral)" stroke="#fff" stroke-opacity=".24" filter="url(#shadow)"/>
+    <use href="#vinyl" xlink:href="#vinyl"/>
+    <circle cx="74" cy="36" r="11" fill="url(#art-none)"/>
+    <g filter="url(#cover-shadow)"><rect width="72" height="72" fill="url(#art-none)"/></g>
+    <use href="#note" xlink:href="#note" x="22" y="22" width="28" height="28"/>
+    <text x="220" y="41" text-anchor="middle" class="ui white" font-size="14" font-weight="600">Loading lyrics…</text>
+    <use href="#chevron-down" xlink:href="#chevron-down" x="335" y="28" width="16" height="16"/>
+  </g>
+  <text x="56" y="598" class="ui muted" font-size="12">No artwork: neutral placeholder and plain vinyl</text>
+
+  <text x="566" y="172" class="ui label muted">EXPANDED</text>
+
+  <!-- Expanded card (layout B) -->
+  <g transform="translate(566 190) scale(1.3)">
+    <g filter="url(#shadow)"><rect width="448" height="342" fill="#0b2a3a"/></g>
+    <g clip-path="url(#card-clip)">
+      <use href="#art" xlink:href="#art" x="-60" y="-60" width="568" height="462" preserveAspectRatio="none" filter="url(#soft)" opacity=".95"/>
+      <rect width="448" height="342" fill="url(#shade)"/>
+    </g>
+    <rect x=".5" y=".5" width="447" height="341" fill="none" stroke="#fff" stroke-opacity=".24"/>
+
+    <g clip-path="url(#large-cover-clip)"><use href="#art" xlink:href="#art" x="16" y="16" width="150" height="150"/></g>
+
+    <rect x="16.5" y="176.5" width="149" height="35" rx="17.5" fill="url(#glass)" stroke="#fff" stroke-opacity=".25"/>
+    <text x="29" y="198" class="ui" fill="#bfeaff" font-size="10" font-weight="700" letter-spacing=".8">NEXT</text>
+    <text x="63" y="198" class="ui white" font-size="12" font-weight="600">Glass Hours</text>
+    <path d="M147 189.25L151.75 194 147 198.75" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <rect x="182.5" y="16.5" width="249" height="195" rx="21.5" fill="url(#glass)" stroke="#fff" stroke-opacity=".25"/>
+    <text x="197" y="45" class="ui white" font-size="17" font-weight="700">Lyrics</text>
+    <path d="M407.25 41L412 36.25 416.75 41" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="209" y="88" class="ui" fill="#cfdde4" font-size="13" opacity=".6">Streetlights hum a quiet tune</text>
+    <text x="209" y="111" class="ui" fill="#cfdde4" font-size="13">I trace your name in frost</text>
+    <rect x="197" y="122" width="3" height="19" rx="1.5" fill="#6fdcff"/>
+    <text x="208" y="137" class="ui" fill="url(#wipe)" font-size="15" font-weight="700">Neon rain on the avenue</text>
+    <text x="209" y="162" class="ui" fill="#cfdde4" font-size="13">I keep walking home to you</text>
+    <text x="209" y="185" class="ui" fill="#cfdde4" font-size="13" opacity=".6">Static fades, the city sleeps</text>
+
+    <rect x="16.5" y="236.5" width="415" height="89" rx="23.5" fill="url(#glass)" stroke="#fff" stroke-opacity=".25"/>
+    <text x="32" y="264" class="ui white" font-size="14" font-weight="700">Midnight Static</text>
+    <text x="32" y="281" class="ui soft" font-size="12">Kira Halden</text>
+    <path d="M308 262h2v14h-2zM322 262v14l-10.5-7z" fill="#fff"/>
+    <circle cx="352" cy="269" r="20" fill="#fff" fill-opacity=".18"/>
+    <path d="M345 261h4v16h-4zM355 261h4v16h-4z" fill="#fff"/>
+    <path d="M394 262h2v14h-2zM382 262v14l10.5-7z" fill="#fff"/>
+    <text x="32" y="314" class="ui soft" font-size="10">1:24</text>
+    <rect x="58" y="308" width="324" height="3" rx="1.5" fill="#fff" fill-opacity=".25"/>
+    <rect x="58" y="308" width="136" height="3" rx="1.5" fill="#fff"/>
+    <text x="390" y="314" class="ui soft" font-size="10">3:18</text>
+  </g>
+
+  <text x="56" y="712" class="ui muted" font-size="12">Illustration with placeholder artwork, lyrics, and names. Colors are derived from the album artwork; PiP behavior depends on Spotify's embedded browser.</text>
 </svg>

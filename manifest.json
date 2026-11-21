@@ -2,7 +2,7 @@
 [
   {
     "name": "Popliyric",
-    "description": "Synchronized lyrics in a compact Picture-in-Picture player for Spicetify.",
+    "description": "Synchronized lyrics in a floating pill player with vinyl artwork, artwork-colored gradients, and a glass expanded view.",
     "preview": "preview.svg",
     "main": "popliyric.js",
     "readme": "README.md",

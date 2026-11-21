@@ -2,6 +2,11 @@
   const LYRICS_HOST = "https://spclient.wg.spotify.com/color-lyrics/v2";
   const DEFAULT_ACCENT = "#7c8493";
   const DEFAULT_SURFACE = "#17191f";
+  const PILL_SIZE = { width: 390, height: 82 };
+  const EXPANDED_SIZE = { width: 460, height: 352 };
+  const DEFAULT_PALETTE =["#46535c", "#2f3d47", "#1f2a32"];
+  const COLLAPSE_BUTTON = (extraClass) => `<button type="button" class="island-button ${extraClass}" data-action="toggle-view" data-expanded="true" aria-label="Collapse lyrics" title="Collapse lyrics"><svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M3.25 10L8 5.25 12.75 10" /></svg></button>`;
+  const ART_PLACEHOLDER =`<svg class="art-placeholder" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/></svg>`;
   const REFRESH_MS = 500;
   const LYRICS_RETRY_MS = 30_000;
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -182,7 +187,10 @@
     try {
       const platform = Spicetify.Platform;
       const token = platform?.AuthorizationAPI?.getState?.()?.token?.accessToken;
-      if (!token) return { lines: [], synced: false };
+      if (!token) {
+        console.warn("[Popliyric] No Spotify access token available for the lyrics retry.");
+        return { lines: [], synced: false };
+      }
       const response = await fetch(`${LYRICS_HOST}/track/${encodeURIComponent(trackId)}?format=json&vocalRemoval=false&market=from_token`, {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -190,7 +198,10 @@
           "Spotify-App-Version": platform.version
         }
       });
-      if (!response.ok) return { lines: [], synced: false };
+      if (!response.ok) {
+        console.warn("[Popliyric] Lyrics service responded with HTTP", response.status);
+        return { lines: [], synced: false };
+      }
       return parseLyricsResponse(await response.json());
     } catch (error) {
       console.warn("[Popliyric] Authenticated lyrics retry failed:", error?.message || error);
@@ -278,18 +289,20 @@
   function setArtwork(url) {
     const win = state.pipWindow;
     if (!win || win.closed) return;
+    const images = win.document.querySelectorAll("img[data-artwork]");
     if (!url) {
       state.artworkUrl = "";
-      for (const image of [win.document.getElementById("small-cover"), win.document.getElementById("large-cover")]) {
-        image?.removeAttribute("src");
-        if (image) image.style.opacity = "1";
+      for (const image of images) {
+        image.removeAttribute("src");
+        image.classList.remove("image-error");
+        delete image.dataset.source;
+        image.style.opacity = "1";
       }
       applyArtworkColor("");
       return;
     }
-    const images = [win.document.getElementById("small-cover"), win.document.getElementById("large-cover")];
     for (const image of images) {
-      if (!image || image.dataset.source === url) continue;
+      if (image.dataset.source === url) continue;
       image.dataset.source = url;
       image.classList.remove("image-error");
       image.style.opacity = "0.55";
@@ -311,30 +324,7 @@
     }
   }
 
-  function extractDarkColor(image) {
-    const canvas = document.createElement("canvas");
-    canvas.width = canvas.height = 32;
-    const context = canvas.getContext("2d", { willReadFrequently: true });
-    if (!context) return null;
-    context.drawImage(image, 0, 0, 32, 32);
-    const pixels = context.getImageData(0, 0, 32, 32).data;
-    const buckets = new Map();
-    for (let index = 0; index < pixels.length; index += 4) {
-      if (pixels[index + 3] < 160) continue;
-      const key = `${pixels[index] >> 4}:${pixels[index + 1] >> 4}:${pixels[index + 2] >> 4}`;
-      const bucket = buckets.get(key) || { count: 0, red: 0, green: 0, blue: 0 };
-      bucket.count += 1;
-      bucket.red += pixels[index];
-      bucket.green += pixels[index + 1];
-      bucket.blue += pixels[index + 2];
-      buckets.set(key, bucket);
-    }
-    const dominant = [...buckets.values()].sort((left, right) => right.count - left.count)[0];
-    if (!dominant) return null;
-
-    const red = dominant.red / dominant.count / 255;
-    const green = dominant.green / dominant.count / 255;
-    const blue = dominant.blue / dominant.count / 255;
+  function rgbToHsl(red, green, blue) {
     const maximum = Math.max(red, green, blue);
     const minimum = Math.min(red, green, blue);
     const delta = maximum - minimum;
@@ -348,9 +338,101 @@
       else hue = (red - green) / delta + 4;
       hue = (hue * 60 + 360) % 360;
     }
-    const darkSaturation = Math.max(28, Math.min(72, saturation * 82));
-    const darkLightness = Math.max(12, Math.min(28, lightness * 38));
-    return `hsl(${Math.round(hue)} ${Math.round(darkSaturation)}% ${Math.round(darkLightness)}%)`;
+    return { hue, saturation: Math.min(1, saturation), lightness };
+  }
+
+  function hslToRgb(hue, saturation, lightness) {
+    const chroma = (1 - Math.abs(2 * lightness - 1)) * saturation;
+    const segment = hue / 60;
+    const second = chroma * (1 - Math.abs((segment % 2) - 1));
+    const [red, green, blue] = segment < 1 ? [chroma, second, 0]
+      : segment < 2 ? [second, chroma, 0]
+        : segment < 3 ? [0, chroma, second]
+          : segment < 4 ? [0, second, chroma]
+            : segment < 5 ? [second, 0, chroma]
+              : [chroma, 0, second];
+    const offset = lightness - chroma / 2;
+    return [red + offset, green + offset, blue + offset];
+  }
+
+  function relativeLuminance([red, green, blue]) {
+    const linear = (channel) => channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+    return 0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue);
+  }
+
+  // Turns a sampled artwork color into a dark tone that keeps white text at a
+  // contrast ratio of at least 4.5:1 (relative luminance <= 0.183).
+  function toReadableDark({ hue, saturation, lightness }) {
+    const isGray = saturation < 0.12;
+    const darkSaturation = isGray ? saturation * 0.6 : Math.max(0.26, Math.min(0.7, saturation * 0.85));
+    let darkLightness = Math.max(0.1, Math.min(0.3, lightness * 0.5 + 0.06));
+    while (darkLightness > 0.05 && relativeLuminance(hslToRgb(hue, darkSaturation, darkLightness)) > 0.15) {
+      darkLightness -= 0.02;
+    }
+    return `hsl(${Math.round(hue)} ${Math.round(darkSaturation * 100)}% ${Math.round(darkLightness * 100)}%)`;
+  }
+
+  // Picks up to three dominant artwork colors whose hues are visibly distinct.
+  function extractArtworkPalette(image) {
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 32;
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    if (!context) return null;
+    context.drawImage(image, 0, 0, 32, 32);
+    const pixels = context.getImageData(0, 0, 32, 32).data;
+    const buckets = new Map();
+    let sampled = 0;
+    for (let index = 0; index < pixels.length; index += 4) {
+      if (pixels[index + 3] < 160) continue;
+      sampled += 1;
+      const key = `${pixels[index] >> 4}:${pixels[index + 1] >> 4}:${pixels[index + 2] >> 4}`;
+      const bucket = buckets.get(key) || { count: 0, red: 0, green: 0, blue: 0 };
+      bucket.count += 1;
+      bucket.red += pixels[index];
+      bucket.green += pixels[index + 1];
+      bucket.blue += pixels[index + 2];
+      buckets.set(key, bucket);
+    }
+    if (!sampled) return null;
+
+    const candidates = [...buckets.values()].map((bucket) => {
+      const hsl = rgbToHsl(bucket.red / bucket.count / 255, bucket.green / bucket.count / 255, bucket.blue / bucket.count / 255);
+      const usable = hsl.lightness > 0.06 && hsl.lightness < 0.94;
+      return { ...hsl, count: bucket.count, score: bucket.count * (0.3 + 0.7 * hsl.saturation) * (usable ? 1 : 0.15) };
+    }).sort((left, right) => right.score - left.score);
+
+    const minimumShare = Math.max(6, sampled * 0.025);
+    const hueDistance = (left, right) => Math.min(Math.abs(left - right), 360 - Math.abs(left - right));
+    const isDistinct = (candidate, picked) => {
+      const candidateGray = candidate.saturation < 0.12;
+      const pickedGray = picked.saturation < 0.12;
+      if (candidateGray && pickedGray) return Math.abs(candidate.lightness - picked.lightness) >= 0.25;
+      if (candidateGray || pickedGray) return true;
+      return hueDistance(candidate.hue, picked.hue) >= 28;
+    };
+
+    const palette = [];
+    for (const candidate of candidates) {
+      if (palette.length && candidate.count < minimumShare) continue;
+      if (palette.every((picked) => isDistinct(candidate, picked))) palette.push(candidate);
+      if (palette.length === 3) break;
+    }
+    if (!palette.length) return null;
+    if (palette.length === 1) {
+      const [only] = palette;
+      palette.push({ ...only, hue: (only.hue + 18) % 360, lightness: only.lightness * 0.6 });
+    }
+    return palette.map(toReadableDark);
+  }
+
+  function applyPalette(island, palette) {
+    if (!island) return;
+    const colors = Array.isArray(palette) && palette.length ? palette : DEFAULT_PALETTE;
+    const [first, second = first, third = second] = colors;
+    island.style.setProperty("--accent", first);
+    island.style.setProperty("--c1", first);
+    island.style.setProperty("--c2", second);
+    island.style.setProperty("--c3", third);
   }
 
   function applyArtworkColor(url) {
@@ -358,31 +440,32 @@
     if (!win || win.closed) return;
     const island = win.document.getElementById("island");
     if (!url) {
-      island.style.setProperty("--accent", DEFAULT_ACCENT);
+      applyPalette(island, null);
       island.style.setProperty("--surface", DEFAULT_SURFACE);
       return;
     }
     if (state.artworkColors.has(url)) {
-      island.style.setProperty("--accent", state.artworkColors.get(url) || DEFAULT_ACCENT);
+      applyPalette(island, state.artworkColors.get(url));
       return;
     }
+    const applyIfCurrent = (palette) => {
+      if (state.artworkUrl === url && state.pipWindow && !state.pipWindow.closed) {
+        applyPalette(state.pipWindow.document.getElementById("island"), palette);
+      }
+    };
     const image = new Image();
     image.crossOrigin = "anonymous";
     image.onload = () => {
-      let color = null;
-      try { color = extractDarkColor(image); } catch (error) {
+      let palette = null;
+      try { palette = extractArtworkPalette(image); } catch (error) {
         console.warn("[Popliyric] Album color sampling failed:", error?.message || error);
       }
-      cacheArtworkColor(url, color);
-      if (state.artworkUrl === url && state.pipWindow && !state.pipWindow.closed) {
-        state.pipWindow.document.getElementById("island")?.style.setProperty("--accent", color || DEFAULT_ACCENT);
-      }
+      cacheArtworkColor(url, palette);
+      applyIfCurrent(palette);
     };
     image.onerror = () => {
       cacheArtworkColor(url, null);
-      if (state.artworkUrl === url && state.pipWindow && !state.pipWindow.closed) {
-        state.pipWindow.document.getElementById("island")?.style.setProperty("--accent", DEFAULT_ACCENT);
-      }
+      applyIfCurrent(null);
     };
     image.src = url;
   }
@@ -412,9 +495,8 @@
       secondary.hidden = hasLyrics || isLoading;
       doc.getElementById("track-title").textContent = track.title || "Loading track…";
       doc.getElementById("track-artist").textContent = track.artist;
-      doc.getElementById("track-album").textContent = track.album;
       doc.getElementById("small-title").textContent = track.title || "Loading track…";
-      doc.getElementById("fallback-album").textContent = track.album;
+      doc.getElementById("fallback-album").textContent = track.album ? `From ${track.album}` : "";
     } else {
       doc.getElementById("small-primary").textContent = "No track playing";
       doc.getElementById("small-title").textContent = "No track playing";
@@ -422,18 +504,21 @@
       doc.getElementById("small-secondary").hidden = true;
       doc.getElementById("track-title").textContent = "No track playing";
       doc.getElementById("track-artist").textContent = "Play a song in Spotify";
-      doc.getElementById("track-album").textContent = "";
       doc.getElementById("fallback-album").textContent = "";
     }
 
     const list = doc.getElementById("lyrics-list");
     if (!hasLyrics) {
       list.replaceChildren();
+      // Forget the rendered track so a later retry for the same URI rebuilds the lines.
+      delete list.dataset.uri;
       state.activeIndex = -1;
       return;
     }
+    list.classList.toggle("unsynced", !state.lyricsSynced);
     if (list.dataset.uri !== state.trackUri) {
       list.dataset.uri = state.trackUri;
+      list.parentElement.scrollTop = 0;
       list.replaceChildren(...state.lyrics.map((line, index) => {
         const element = doc.createElement("div");
         element.className = "lyric-line";
@@ -450,11 +535,51 @@
       list.querySelectorAll(".lyric-line").forEach((line, index) => {
         line.classList.toggle("active", index === active);
       });
-      if (active >= 0 && state.expanded) {
-        list.querySelector(`[data-index="${active}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" });
-      }
+      if (active >= 0 && state.expanded) scrollActiveLine(true);
     }
     applyWipe();
+  }
+
+  // Centres the active line inside the lyrics panel only. scrollIntoView() could
+  // also scroll the overflow-hidden card, which shifts the whole layout.
+  function scrollActiveLine(smooth) {
+    const win = state.pipWindow;
+    if (!win || win.closed) return;
+    const scroller = win.document.getElementById("lyrics-panel");
+    const line = scroller?.querySelector(`[data-index="${state.activeIndex}"]`);
+    if (!line || !scroller.clientHeight) return;
+    const reduceMotion = win.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    scroller.scrollTo({
+      top: line.offsetTop - (scroller.clientHeight - line.offsetHeight) / 2,
+      behavior: smooth && !reduceMotion ? "smooth" : "auto"
+    });
+  }
+
+  function readNextTrack() {
+    const upcoming = Spicetify.Queue?.nextTracks;
+    if (!Array.isArray(upcoming)) return null;
+    for (const entry of upcoming) {
+      const item = entry?.contextTrack || entry;
+      const uri = typeof item?.uri === "string" ? item.uri : "";
+      if (!uri || uri.includes("delimiter")) continue;
+      const title = safeText(item.metadata?.title || item.name, "");
+      if (title) return { title, artist: safeText(item.metadata?.artist_name || "", "") };
+    }
+    return null;
+  }
+
+  function renderNextTrack() {
+    const win = state.pipWindow;
+    if (!win || win.closed) return;
+    const chip = win.document.getElementById("next-chip");
+    const name = win.document.getElementById("next-name");
+    if (!chip || !name) return;
+    let next = null;
+    try { next = readNextTrack(); } catch (_) { next = null; }
+    chip.hidden = !next;
+    const label = next ? next.title : "";
+    if (name.textContent !== label) name.textContent = label;
+    chip.title = next ? [next.title, next.artist].filter(Boolean).join(" — ") : "";
   }
 
   function renderProgress() {
@@ -529,9 +654,14 @@
     }
   }
 
+  // Each renderer is isolated: a UI error must not reach the lyric request's
+  // catch handler, which would otherwise discard lyrics that did arrive.
   function renderAll() {
-    renderLyricMode();
-    renderProgress();
+    for (const render of [renderLyricMode, renderProgress, renderNextTrack]) {
+      try { render(); } catch (error) {
+        console.error(`[Popliyric] ${render.name} failed:`, error);
+      }
+    }
   }
 
   function requestTrackLyrics(uri) {
@@ -669,6 +799,39 @@
     if (!state.isPlaying) cancelWipeAnimation();
   }
 
+  // resizeTo() sets the outer size; add the window frame so the page area
+  // (innerWidth/innerHeight) matches the layout size exactly.
+  function resizeToInner(win, size) {
+    const frameWidth = Math.max(0, (win.outerWidth || 0) - win.innerWidth);
+    const frameHeight = Math.max(0, (win.outerHeight || 0) - win.innerHeight);
+    win.resizeTo(size.width + frameWidth, size.height + frameHeight);
+  }
+
+  // Document PiP cannot disable manual resizing, so the window snaps back to
+  // the size of the current view shortly after the user stops resizing it.
+  function lockWindowSize(win) {
+    let timer = 0;
+    let streak = 0;
+    let lastAttempt = 0;
+    win.addEventListener("resize", () => {
+      win.clearTimeout(timer);
+      timer = win.setTimeout(() => {
+        if (state.pipWindow !== win || win.closed) return;
+        const target = state.expanded ? EXPANDED_SIZE : PILL_SIZE;
+        if (Math.abs(win.innerWidth - target.width) <= 2 && Math.abs(win.innerHeight - target.height) <= 2) {
+          streak = 0;
+          return;
+        }
+        // Give up after a few quick retries if Spotify refuses or clamps the size.
+        const now = performance.now();
+        streak = now - lastAttempt < 1500 ? streak + 1 : 1;
+        lastAttempt = now;
+        if (streak > 3) return;
+        try { resizeToInner(win, target); } catch (_) {}
+      }, 220);
+    });
+  }
+
   function setExpanded(expanded, resize = true) {
     state.expanded = expanded;
     const win = state.pipWindow;
@@ -676,20 +839,19 @@
     const island = win.document.getElementById("island");
     island.classList.toggle("expanded", expanded);
     for (const button of win.document.querySelectorAll("[data-action='toggle-view']")) {
-      button.setAttribute("aria-label", expanded ? "Collapse lyrics" : "Expand lyrics");
-      button.title = expanded ? "Collapse lyrics" : "Expand lyrics";
-      button.dataset.expanded = String(expanded);
+      button.setAttribute("aria-expanded", String(expanded));
     }
     if (resize && typeof win.resizeTo === "function") {
-      const requestedHeight = expanded ? 420 : 82;
+      const requested = expanded ? EXPANDED_SIZE : PILL_SIZE;
       try {
-        win.resizeTo(390, requestedHeight);
+        resizeToInner(win, requested);
         window.setTimeout(() => {
           if (state.pipWindow !== win || win.closed || !win.innerHeight) return;
-          if (Math.abs(win.innerHeight - requestedHeight) > 48) {
+          if (expanded) scrollActiveLine(false);
+          if (Math.abs(win.innerHeight - requested.height) > 48 || Math.abs(win.innerWidth - requested.width) > 48) {
             console.warn("[Popliyric] Spotify did not apply the requested PiP size.", {
-              requestedHeight,
-              actualHeight: win.innerHeight
+              requested,
+              actual: { width: win.innerWidth, height: win.innerHeight }
             });
             Spicetify.showNotification("Spotify blocked PiP resizing. Resize the PiP window manually, then click the arrow again.", true);
           }
@@ -701,10 +863,7 @@
     } else if (resize) {
       console.warn("[Popliyric] This PiP window does not expose resizeTo().");
     }
-    if (expanded) {
-      const active = win.document.querySelector(`[data-index="${state.activeIndex}"]`);
-      active?.scrollIntoView({ block: "center", behavior: "smooth" });
-    }
+    if (expanded) win.requestAnimationFrame(() => scrollActiveLine(false));
   }
 
   function buildPipDocument(doc) {
@@ -716,115 +875,188 @@
         <title>Popliyric</title>
         <style>
           @property --accent { syntax: "<color>"; inherits: true; initial-value: #7c8493; }
+          @property --c1 { syntax: "<color>"; inherits: true; initial-value: #46535c; }
+          @property --c2 { syntax: "<color>"; inherits: true; initial-value: #2f3d47; }
+          @property --c3 { syntax: "<color>"; inherits: true; initial-value: #1f2a32; }
           :root { color-scheme: dark; font-family: Inter, "Segoe UI", sans-serif; }
           * { box-sizing: border-box; }
-          html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: transparent; color: #f5f5f5; }
-          body { padding: 5px 6px; font-family: Inter, "Segoe UI", sans-serif; }
+          html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #0b0d10; color: #fff; }
+          body { padding: 0; font-family: Inter, "Segoe UI", sans-serif; }
           button { font: inherit; }
-          #island { --accent: ${DEFAULT_ACCENT}; --surface: ${DEFAULT_SURFACE}; width: 100%; height: 100%; overflow: hidden; border: 1px solid #ffffff24; border-radius: 999px; color: #f5f5f5; background-color: var(--surface); background-image: linear-gradient(145deg, color-mix(in srgb, var(--accent) 32%, #13151a), color-mix(in srgb, var(--accent) 8%, #111216) 58%, #111216); box-shadow: 0 8px 28px #0007, inset 0 1px #ffffff14; transition: --accent .55s, border-radius .22s, background .55s, border-color .22s; }
-          #island:hover { border-color: #ffffff45; }
-          .collapsed-view { width: 100%; height: 100%; padding: 7px 10px; display: flex; align-items: center; gap: 12px; cursor: grab; user-select: none; }
-          .collapsed-view:active, .track-header:active { cursor: grabbing; }
-          .expanded-view { width: 100%; height: 100%; padding: 14px 17px 12px; display: none; flex-direction: column; gap: 9px; opacity: 0; }
-          #island.expanded { border-radius: 24px; }
-          #island.expanded .collapsed-view { display: none; }
-          #island.expanded .expanded-view { display: flex; animation: reveal .2s ease forwards; }
-          @keyframes reveal { to { opacity: 1; } }
-          .vinyl { position: relative; display: block; flex: none; overflow: hidden; border-radius: 50%; background-color: #090a0c; background-image: conic-gradient(from 25deg, transparent 0deg, #ffffff21 45deg, transparent 85deg), repeating-radial-gradient(circle, #18191b 0, #090a0c 1px, #202124 2px, #090a0c 3px); animation: vinyl-spin 5s linear infinite; animation-play-state: paused; box-shadow: 0 2px 9px #0009; }
+
+          /* Shell: fills the whole PiP window, because a Document PiP window is an
+             opaque rectangle and a rounded shape inside it leaves dark corners.
+             The max size keeps the layout from stretching while the window is
+             being resized; the window then snaps back to its fixed size. */
+          #island { --accent: ${DEFAULT_ACCENT}; --surface: ${DEFAULT_SURFACE}; position: relative; isolation: isolate; width: 100%; height: 100%; max-width: ${PILL_SIZE.width}px; max-height: ${PILL_SIZE.height}px; overflow: hidden; color: #fff; background-color: var(--surface); background-image: linear-gradient(90deg, var(--c1), var(--c2) 48%, var(--c3)); box-shadow: inset 0 1px #ffffff1f; transition: --accent .55s, --c1 .55s, --c2 .55s, --c3 .55s; }
+
+          /* Shared artwork frame with a neutral placeholder underneath the image. */
+          .art-frame { position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; background: linear-gradient(135deg, #2c3a44, #1a232b); }
+          .art-frame img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; color: transparent; font-size: 0; transition: opacity .2s; }
+          .art-placeholder { width: 28px; height: 28px; fill: none; stroke: #9fb0ba; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+          img[data-artwork]:not([src]), img[data-artwork].image-error { visibility: hidden; }
+
+          /* Vinyl: grooved disc whose label shows the artwork; spins while playing. */
+          .vinyl { position: absolute; border-radius: 50%; background: conic-gradient(from 25deg, transparent 0deg, #ffffff2b 45deg, transparent 85deg), repeating-radial-gradient(circle, #1a1b1d 0, #08090a 1px, #232528 2px, #08090a 3px); box-shadow: 0 2px 10px #0009; animation: vinyl-spin 5s linear infinite; animation-play-state: paused; }
           #island.is-playing .vinyl { animation-play-state: running; }
-          .vinyl-small { width: 44px; height: 44px; }
-          .vinyl-large { width: 56px; height: 56px; }
-          .vinyl img { position: absolute; inset: 12.5%; width: 75%; height: 75%; border-radius: 50%; object-fit: cover; color: transparent; font-size: 0; transition: opacity .2s; }
-          .vinyl img.image-error { display: none; }
+          .vinyl-label { position: absolute; left: 31.67%; top: 31.67%; width: 36.67%; height: 36.67%; overflow: hidden; border-radius: 50%; background: linear-gradient(135deg, #2c3a44, #1a232b); }
+          .vinyl-label img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: opacity .2s; }
           @keyframes vinyl-spin { to { transform: rotate(360deg); } }
-          .collapsed-copy { flex: 1; min-width: 0; display: flex; align-items: center; }
-          .lyric-preview { width: 100%; max-height: 2.7em; overflow: hidden; color: #9298a0; font-size: 14px; font-weight: 600; line-height: 1.35; letter-spacing: -.15px; text-align: center; white-space: normal; overflow-wrap: normal; word-break: normal; background-image: linear-gradient(to bottom,#fff 0%,#fff var(--lyric-progress,0%),#9298a0 var(--lyric-progress,0%),#9298a0 100%); background-clip: text; -webkit-background-clip: text; color: transparent; -webkit-text-fill-color: transparent; }
+
+          .collapsed-view { position: absolute; inset: 0; cursor: grab; user-select: none; animation: fade-in .2s ease; }
+          @keyframes fade-in { from { opacity: 0; } }
+          .collapsed-view:active { cursor: grabbing; }
+          /* Compact player: 390 x 82; artwork is as tall as the window. */
+          .pill-cover { position: absolute; z-index: 2; left: 0; top: 0; width: 82px; height: 82px; box-shadow: 5px 0 12px #0006; }
+          .vinyl-pill { z-index: 1; left: 50px; top: 7px; width: 68px; height: 68px; }
+          .collapsed-copy { position: absolute; left: 130px; right: 56px; top: 0; bottom: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 0; text-align: center; }
+          .lyric-preview { width: 100%; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: 16px; font-weight: 600; line-height: 1.3; letter-spacing: -.1px; white-space: normal; overflow-wrap: break-word; background-image: linear-gradient(to bottom, #fff 0%, #fff var(--lyric-progress, 0%), #cbd8de var(--lyric-progress, 0%), #cbd8de 100%); background-clip: text; -webkit-background-clip: text; color: transparent; -webkit-text-fill-color: transparent; }
           .lyric-preview.static-highlight { color: #fff; background: none; -webkit-text-fill-color: currentColor; }
           .fallback-copy { display: none; width: 100%; min-width: 0; }
           #island[data-mode="track-info"] .fallback-copy { display: block; }
           #island[data-mode="track-info"] .lyric-preview { display: none; }
-          .fallback-title, .fallback-secondary { display: block; overflow: hidden; text-overflow: clip; white-space: normal; overflow-wrap: break-word; word-break: normal; }
-          .fallback-title { color: #f5f5f5; font-size: 14px; font-weight: 600; line-height: 1.25; max-height: 2.5em; }
-          .fallback-secondary { margin-top: 3px; color: #a1a1aa; font-size: 12px; line-height: 1.25; max-height: 2.5em; }
-          .island-button { width: 34px; height: 34px; flex: none; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 50%; color: #d1d5db; background: transparent; cursor: pointer; transition: background .16s, color .16s, transform .16s; }
-          .island-button:hover { color: #fff; background: #ffffff16; }
+          .fallback-title, .fallback-secondary { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+          .fallback-title { font-size: 16px; font-weight: 600; line-height: 1.3; }
+          .fallback-secondary { margin-top: 2px; color: #d3e0e6; font-size: 13px; line-height: 1.3; }
+          .collapsed-view .island-button { position: absolute; right: 12px; top: 24px; }
+
+          .island-button { width: 34px; height: 34px; flex: none; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 50%; color: #fff; background: transparent; cursor: pointer; transition: background .16s, transform .16s; }
+          .island-button:hover { background: #ffffff24; }
           .island-button:active { transform: scale(.92); }
-          .island-button svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; transition: transform .18s ease; }
-          .island-button[data-expanded="true"] svg { transform: rotate(180deg); }
-          .track-header { min-height: 62px; display: flex; align-items: center; gap: 12px; cursor: grab; user-select: none; }
-          .track-info { flex: 1; min-width: 0; }
-          .track-title { color: #f5f5f5; font-size: 14px; font-weight: 600; line-height: 1.3; white-space: normal; overflow-wrap: break-word; word-break: normal; max-height: 2.6em; overflow: hidden; }
-          .track-artist { margin-top: 3px; color: #a1a1aa; font-size: 12px; font-weight: 400; line-height: 1.25; white-space: normal; overflow-wrap: break-word; word-break: normal; max-height: 1.25em; overflow: hidden; }
-          .track-album { margin-top: 2px; color: #858995; font-size: 11px; line-height: 1.2; white-space: normal; overflow: hidden; }
-          .lyrics-window { flex: 1; min-height: 88px; overflow: auto; padding: 9px 12px; border: 1px solid #ffffff0d; border-radius: 18px; background: #07080b65; scrollbar-width: thin; scrollbar-color: #ffffff32 transparent; text-align: center; }
-          .lyrics-window[hidden], .state-message[hidden], .track-fallback[hidden] { display: none; }
-          #lyrics-list { min-height: 100%; display: flex; flex-direction: column; justify-content: center; }
-          .lyric-line { flex: 0 0 auto; width: 100%; max-height: 3em; overflow: hidden; padding: 4px 0; color: #9298a0; font-size: 13px; font-weight: 500; line-height: 1.5; text-align: center; white-space: normal; overflow-wrap: normal; word-break: normal; }
-          .lyric-line.active { color: #fff; font-size: 15px; font-weight: 600; background-image: linear-gradient(to bottom,#fff 0%,#fff var(--lyric-progress,0%),#9298a0 var(--lyric-progress,0%),#9298a0 100%); background-clip: text; -webkit-background-clip: text; color: transparent; -webkit-text-fill-color: transparent; }
+          .island-button:focus-visible, .control-button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+          .island-button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+          /* Expanded card (layout B): fills the 460 x 352 window. */
+          #island.expanded { max-width: ${EXPANDED_SIZE.width}px; max-height: ${EXPANDED_SIZE.height}px; background-color: #0b1218; background-image: none; }
+          #island.expanded .collapsed-view { display: none; }
+
+          /* Fake glass: blurred artwork + dark shade behind semi-transparent panels.
+             It does not depend on backdrop-filter, which is only added as an enhancement. */
+          .card-backdrop { position: absolute; inset: 0; z-index: 0; display: none; overflow: hidden; border-radius: inherit; background: linear-gradient(150deg, var(--c1), var(--c2) 55%, var(--c3)); }
+          #island.expanded .card-backdrop { display: block; }
+          .card-backdrop img { position: absolute; left: -60px; top: -60px; width: calc(100% + 120px); height: calc(100% + 120px); object-fit: cover; filter: blur(38px) saturate(1.5); opacity: .95; transform: translateZ(0); }
+          .card-backdrop::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, #05080b66, #05080ba6); }
+          .glass { background: linear-gradient(135deg, #ffffff2e, #ffffff0f); border: 1px solid #ffffff40; box-shadow: inset 0 1px #ffffff26, 0 6px 20px #0004; }
+          @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { .glass { -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); } }
+
+          .expanded-view { position: relative; z-index: 1; width: 100%; height: 100%; padding: 18px; display: none; flex-direction: column; justify-content: space-between; opacity: 0; cursor: grab; user-select: none; }
+          .expanded-view:active { cursor: grabbing; }
+          #island.expanded .expanded-view { display: flex; animation: reveal .2s ease forwards; }
+          @keyframes reveal { to { opacity: 1; } }
+          .row-top { display: flex; gap: 16px; height: 196px; min-height: 0; }
+          .left-col { width: 150px; flex: none; display: flex; flex-direction: column; gap: 10px; }
+          .large-cover { width: 150px; height: 150px; flex: none; border-radius: 18px; box-shadow: 0 10px 24px #0008; }
+          .next-chip { height: 36px; min-width: 0; display: flex; align-items: center; gap: 6px; padding: 0 10px 0 12px; border-radius: 999px; }
+          .next-tag { flex: none; color: #bfeaff; font-size: 10px; font-weight: 700; letter-spacing: .08em; }
+          .next-name { flex: 1; min-width: 0; overflow: hidden; font-size: 12px; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; }
+          .next-chip svg { flex: none; width: 14px; height: 14px; fill: none; stroke: #fff; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+          .lyrics-card { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 10px 14px; border-radius: 22px; }
+          .lyrics-head { position: absolute; z-index: 2; top: 6px; right: 6px; }
+          .lyrics-head .island-button { width: 30px; height: 30px; }
+          .lyrics-scroll { position: relative; flex: 1; min-height: 0; overflow-y: auto; cursor: auto; user-select: text; scrollbar-width: none; -webkit-mask-image: linear-gradient(transparent, #000 18%, #000 82%, transparent); mask-image: linear-gradient(transparent, #000 18%, #000 82%, transparent); }
+          .lyrics-scroll::-webkit-scrollbar { display: none; }
+          #lyrics-list { display: flex; flex-direction: column; gap: 7px; padding: 64px 22px 64px 0; }
+          .lyric-line { position: relative; flex: none; padding-left: 12px; color: #cfdde4; font-size: 13px; line-height: 1.35; overflow-wrap: break-word; }
+          #lyrics-list.unsynced .lyric-line { color: #eef4f7; }
+          .lyric-line.active { font-size: 15px; font-weight: 700; line-height: 1.3; background-image: linear-gradient(to bottom, #fff 0%, #fff var(--lyric-progress, 0%), #cbd8de var(--lyric-progress, 0%), #cbd8de 100%); background-clip: text; -webkit-background-clip: text; color: transparent; -webkit-text-fill-color: transparent; }
           .lyric-line.active.static-highlight { color: #fff; background: none; -webkit-text-fill-color: currentColor; }
-          .state-message { padding: 16px 4px; color: #a1a1aa; font-size: 13px; line-height: 1.5; text-align: center; }
-          .track-fallback { flex: 1; min-height: 88px; padding: 16px; display: flex; flex-direction: column; justify-content: center; border: 1px solid #ffffff0d; border-radius: 18px; background: #07080b65; }
-          .fallback-label { color: #a1a1aa; font-size: 10px; font-weight: 600; letter-spacing: .1em; }
-          #fallback-album { margin-top: 8px; color: #f5f5f5; font-size: 15px; font-weight: 600; line-height: 1.4; white-space: normal; overflow-wrap: break-word; }
-          .progress-row { display: flex; align-items: center; gap: 8px; color: #9298a0; font-size: 10px; font-variant-numeric: tabular-nums; }
-          .progress-track { flex: 1; height: 3px; overflow: hidden; border-radius: 999px; background: #ffffff28; }
-          #progress-fill { display: block; width: 0; height: 100%; border-radius: inherit; background: #f5f5f5; transition: width .12s linear; }
-          .controls { min-height: 34px; display: flex; align-items: center; justify-content: center; gap: 20px; }
-          .control-button { width: 36px; height: 34px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 50%; color: #e5e7eb; background: transparent; cursor: pointer; transition: color .15s, transform .15s; }
-          .control-button:hover { color: #fff; }
+          .lyric-line.active::before { content: ""; position: absolute; left: 0; top: 1px; bottom: 1px; width: 3px; border-radius: 2px; background: #6fdcff; }
+          .state-message { flex: 1; display: flex; align-items: center; justify-content: center; color: #d3e0e6; font-size: 13px; text-align: center; }
+          .track-fallback { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: center; gap: 6px; }
+          .fallback-label { color: #bfeaff; font-size: 10px; font-weight: 700; letter-spacing: .08em; }
+          #fallback-album { color: #d3e0e6; font-size: 13px; line-height: 1.35; overflow-wrap: break-word; }
+
+          .now-bar { flex: none; height: 90px; display: flex; flex-direction: column; justify-content: space-between; padding: 10px 16px 12px; border-radius: 24px; }
+          .bar-top { display: flex; align-items: center; gap: 12px; }
+          .now-meta { flex: 1; min-width: 0; }
+          .track-title, .track-artist { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+          .track-title { font-size: 14px; font-weight: 700; line-height: 1.3; }
+          .track-artist { margin-top: 1px; color: #d3e0e6; font-size: 12px; line-height: 1.3; }
+          .controls { flex: none; display: flex; align-items: center; gap: 6px; }
+          .control-button { width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 50%; color: #fff; background: transparent; cursor: pointer; transition: background .15s, transform .15s; }
+          .control-button:hover { background: #ffffff24; }
           .control-button:active { transform: scale(.92); }
-          .control-button svg { width: 19px; height: 19px; fill: currentColor; }
-          .control-button.play-toggle svg { width: 21px; height: 21px; }
-          .control-button.play-toggle .play-icon { display: block !important; }
-          .control-button.play-toggle .pause-icon { display: none !important; }
-          .control-button.play-toggle[data-playing="true"] .play-icon { display: none !important; }
-          .control-button.play-toggle[data-playing="true"] .pause-icon { display: block !important; }
-          .control-button.play-toggle svg.play-icon, .control-button.play-toggle svg.pause-icon { width: 21px !important; height: 21px !important; fill: #fff !important; color: #fff !important; opacity: 1 !important; visibility: visible !important; flex: 0 0 21px; }
+          .control-button svg { width: 20px; height: 20px; fill: currentColor; }
+          .control-button.play-toggle { width: 40px; height: 40px; background: #ffffff2e; }
+          .control-button.play-toggle:hover { background: #ffffff42; }
+          .control-button.play-toggle svg { width: 22px; height: 22px; }
+          .play-toggle .pause-icon, .play-toggle[data-playing="true"] .play-icon { display: none; }
+          .play-toggle[data-playing="true"] .pause-icon { display: block; }
+          .bar-collapse { display: none; }
+          .progress-row { display: flex; align-items: center; gap: 8px; color: #d3e0e6; font-size: 10px; font-variant-numeric: tabular-nums; }
+          .progress-track { flex: 1; height: 3px; overflow: hidden; border-radius: 999px; background: #ffffff40; }
+          #progress-fill { display: block; width: 0; height: 100%; border-radius: inherit; background: #fff; transition: width .12s linear; }
           [hidden] { display: none !important; }
-          @media (max-height: 280px) { #island.expanded .expanded-view { padding: 7px 10px; gap: 4px; } #island.expanded .track-header { min-height: 50px; } #island.expanded .vinyl-large { width: 46px; height: 46px; } #island.expanded .lyrics-window, #island.expanded .track-fallback { min-height: 48px; } #island.expanded .controls { min-height: 28px; } }
-          @media (max-width: 310px) { .collapsed-view { gap: 7px; padding-inline: 7px; } .vinyl-small { width: 38px; height: 38px; } .track-header { gap: 7px; } .expanded-view { padding-inline: 10px; } }
-          @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+
+          /* If Spotify refuses the resize, keep the expanded card usable in a smaller window. */
+          @media (max-width: 420px) { #island.expanded .left-col { display: none; } }
+          @media (max-height: 300px) { #island.expanded .row-top { display: none; } #island.expanded .expanded-view { padding: 6px; justify-content: center; } #island.expanded .now-bar { height: auto; gap: 6px; padding: 6px 12px; } #island.expanded .bar-collapse { display: inline-flex; } }
+          @media (max-height: 130px) { #island.expanded .progress-row { display: none; } }
+          @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; } .vinyl { animation: none !important; } }
         </style>
       </head>
       <body>
         <main id="island" data-mode="lyrics" aria-label="Popliyric player">
-          <section id="collapsed-view" class="collapsed-view" title="Drag to move or click to expand">
-            <span class="vinyl vinyl-small"><img id="small-cover" alt="Album artwork"></span>
+          <section id="collapsed-view" class="collapsed-view" title="Drag to move">
+            <span class="vinyl vinyl-pill" aria-hidden="true"><span class="vinyl-label"><img id="small-label" data-artwork alt=""></span></span>
+            <span class="art-frame pill-cover">${ART_PLACEHOLDER}<img id="small-cover" data-artwork alt="Album artwork"></span>
             <div class="collapsed-copy">
               <div id="small-primary" class="lyric-preview">Loading lyrics…</div>
               <div class="fallback-copy"><span id="small-title" class="fallback-title">Loading track…</span><span id="small-secondary" class="fallback-secondary"></span></div>
             </div>
             <button type="button" class="island-button" data-action="toggle-view" data-expanded="false" aria-label="Expand lyrics" title="Expand lyrics"><svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M3.25 6L8 10.75 12.75 6" /></svg></button>
           </section>
+          <div class="card-backdrop" aria-hidden="true"><img id="backdrop-art" data-artwork alt=""></div>
           <section id="expanded-view" class="expanded-view" aria-label="Expanded player">
-            <header id="track-header" class="track-header" title="Drag to move or click to collapse">
-              <span class="vinyl vinyl-large"><img id="large-cover" alt="Album artwork"></span>
-              <div class="track-info"><div id="track-title" class="track-title">Loading track…</div><div id="track-artist" class="track-artist"></div><div id="track-album" class="track-album"></div></div>
-              <button type="button" class="island-button" data-action="toggle-view" data-expanded="false" aria-label="Collapse lyrics" title="Collapse lyrics"><svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M3.25 6L8 10.75 12.75 6" /></svg></button>
-            </header>
-            <div id="lyrics-loading" class="state-message">Loading lyrics…</div>
-            <section id="lyrics-panel" class="lyrics-window" aria-label="Lyrics"><div id="lyrics-list"></div></section>
-            <section id="track-fallback" class="track-fallback" aria-label="Track information" hidden><div class="fallback-label">TRACK INFORMATION</div><div id="fallback-album"></div></section>
-            <div class="progress-row" aria-label="Playback progress"><span id="elapsed">0:00</span><div class="progress-track"><span id="progress-fill"></span></div><span id="duration">0:00</span></div>
-            <nav class="controls" aria-label="Playback controls">
-              <button type="button" class="control-button" data-action="previous" aria-label="Previous track"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M2.5 2.5H5v13H2.5zM15.5 3v12L5.5 9z" /></svg></button>
-              <button type="button" id="play-toggle" class="control-button play-toggle" data-playing="false" data-action="toggle" aria-label="Play"><svg id="play-icon" class="play-icon" width="21" height="21" viewBox="0 0 18 18" aria-hidden="true"><path d="M3.5 2.5v13L14.5 9z" /></svg><svg id="pause-icon" class="pause-icon" width="21" height="21" viewBox="0 0 18 18" aria-hidden="true"><path d="M4.5 2.5h3v13h-3zM10.5 2.5h3v13h-3z" /></svg></button>
-              <button type="button" class="control-button" data-action="next" aria-label="Next track"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M13 2.5h2.5v13H13zM2.5 3v12l10-6z" /></svg></button>
-            </nav>
+            <div class="row-top">
+              <div class="left-col">
+                <span class="art-frame large-cover">${ART_PLACEHOLDER}<img id="large-cover" data-artwork alt="Album artwork"></span>
+                <div id="next-chip" class="next-chip glass" hidden><span class="next-tag">NEXT</span><span id="next-name" class="next-name"></span><svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3.25L10.75 8 6 12.75" /></svg></div>
+              </div>
+              <section class="lyrics-card glass" aria-label="Lyrics">
+                <div class="lyrics-head">${COLLAPSE_BUTTON("")}</div>
+                <div id="lyrics-loading" class="state-message">Loading lyrics…</div>
+                <div id="lyrics-panel" class="lyrics-scroll"><div id="lyrics-list"></div></div>
+                <div id="track-fallback" class="track-fallback" hidden><div class="fallback-label">NO LYRICS FOR THIS TRACK</div><div id="fallback-album"></div></div>
+              </section>
+            </div>
+            <footer class="now-bar glass">
+              <div class="bar-top">
+                <div class="now-meta"><div id="track-title" class="track-title">Loading track…</div><div id="track-artist" class="track-artist"></div></div>
+                <nav class="controls" aria-label="Playback controls">
+                  <button type="button" class="control-button" data-action="previous" aria-label="Previous track"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 5h2v14H6zM20 5v14L9.5 12z" /></svg></button>
+                  <button type="button" id="play-toggle" class="control-button play-toggle" data-playing="false" data-action="toggle" aria-label="Play"><svg class="play-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 4.5v15L19.5 12z" /></svg><svg class="pause-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 4h4v16H7zM13 4h4v16h-4z" /></svg></button>
+                  <button type="button" class="control-button" data-action="next" aria-label="Next track"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16 5h2v14h-2zM4 5v14l10.5-7z" /></svg></button>
+                </nav>
+                ${COLLAPSE_BUTTON("bar-collapse")}
+              </div>
+              <div class="progress-row" aria-label="Playback progress"><span id="elapsed">0:00</span><div class="progress-track"><span id="progress-fill"></span></div><span id="duration">0:00</span></div>
+            </footer>
           </section>
         </main>
       </body>`;
 
     const docWindow = state.pipWindow;
     const island = doc.getElementById("island");
+    const supportsBackdrop = Boolean(docWindow.CSS?.supports?.("backdrop-filter", "blur(1px)") ||
+      docWindow.CSS?.supports?.("-webkit-backdrop-filter", "blur(1px)"));
+    console.info("[Popliyric] backdrop-filter supported in PiP:", supportsBackdrop, "(the glass look does not depend on it)");
+    lockWindowSize(docWindow);
+    // The window resize after expanding is asynchronous; centre the active line
+    // once the lyrics panel actually has a height.
+    if (typeof docWindow.ResizeObserver === "function") {
+      new docWindow.ResizeObserver(() => {
+        if (state.expanded) scrollActiveLine(false);
+      }).observe(doc.getElementById("lyrics-panel"));
+    }
     let dragStart = null;
-    let suppressClickUntil = 0;
 
-    function makeDragHandle(element, clickToggles) {
+    // Dragging moves the window; only the chevron buttons expand or collapse it.
+    function makeDragHandle(element) {
       element.addEventListener("pointerdown", (event) => {
-        if (event.button !== 0 || event.target.closest("button")) return;
+        // Buttons stay clickable and the lyrics list stays scrollable/selectable.
+        if (event.button !== 0 || event.target.closest("button, .lyrics-scroll")) return;
         dragStart = { pointerId: event.pointerId, x: event.screenX, y: event.screenY, moved: false };
-        suppressClickUntil = 0;
         element.setPointerCapture(event.pointerId);
       });
       element.addEventListener("pointermove", (event) => {
@@ -833,7 +1065,6 @@
         const dy = event.screenY - dragStart.y;
         if (!dragStart.moved && Math.hypot(dx, dy) < 4) return;
         dragStart.moved = true;
-        didDrag = true;
         dragStart.x = event.screenX;
         dragStart.y = event.screenY;
         try { docWindow.moveBy(dx, dy); } catch (_) {
@@ -842,26 +1073,18 @@
       });
       const endDrag = (event) => {
         if (dragStart?.pointerId !== event.pointerId) return;
-        if (dragStart.moved) suppressClickUntil = performance.now() + 300;
         dragStart = null;
       };
       element.addEventListener("pointerup", endDrag);
       element.addEventListener("pointercancel", endDrag);
-      if (clickToggles) {
-        element.addEventListener("click", () => {
-          if (performance.now() < suppressClickUntil) { suppressClickUntil = 0; return; }
-          setExpanded(!state.expanded);
-        });
-      }
     }
 
-    makeDragHandle(doc.getElementById("collapsed-view"), true);
-    makeDragHandle(doc.getElementById("track-header"), true);
+    makeDragHandle(doc.getElementById("collapsed-view"));
+    makeDragHandle(doc.getElementById("expanded-view"));
     doc.querySelectorAll("[data-action='toggle-view']").forEach((button) => {
       button.addEventListener("click", (event) => {
         event.stopPropagation();
-        suppressClickUntil = 0;
-        setExpanded(!state.expanded);
+        setExpanded(button.dataset.expanded !== "true");
       });
     });
     doc.querySelectorAll("[data-action]").forEach((button) => {
@@ -903,9 +1126,12 @@
       return;
     }
     state.pipOpening = true;
-    window.documentPictureInPicture.requestWindow({ width: 390, height: 82 }).then((pipWindow) => {
+    window.documentPictureInPicture.requestWindow({ ...PILL_SIZE }).then((pipWindow) => {
       state.pipWindow = pipWindow;
       state.expanded = false;
+      // The new document has no artwork yet; forget the URL shown in the previous
+      // window so the next update loads the artwork and palette again.
+      state.artworkUrl = "";
       buildPipDocument(pipWindow.document);
       updateFromPlayer();
       if (!state.refreshTimer) state.refreshTimer = window.setInterval(updateFromPlayer, REFRESH_MS);
