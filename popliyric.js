@@ -2,7 +2,9 @@
   const LYRICS_HOST = "https://spclient.wg.spotify.com/color-lyrics/v2";
   const DEFAULT_ACCENT = "#7c8493";
   const DEFAULT_SURFACE = "#17191f";
-  const DEFAULT_PALETTE = ["#46535c", "#2f3d47", "#1f2a32"];
+  const PILL_SIZE = { width: 390, height: 82 };
+  const EXPANDED_SIZE = { width: 460, height: 352 };
+  const DEFAULT_PALETTE =["#46535c", "#2f3d47", "#1f2a32"];
   const COLLAPSE_BUTTON = (extraClass) => `<button type="button" class="island-button ${extraClass}" data-action="toggle-view" data-expanded="true" aria-label="Collapse lyrics" title="Collapse lyrics"><svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M3.25 10L8 5.25 12.75 10" /></svg></button>`;
   const ART_PLACEHOLDER =`<svg class="art-placeholder" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/></svg>`;
   const REFRESH_MS = 500;
@@ -794,20 +796,19 @@
     const island = win.document.getElementById("island");
     island.classList.toggle("expanded", expanded);
     for (const button of win.document.querySelectorAll("[data-action='toggle-view']")) {
-      button.setAttribute("aria-label", expanded ? "Collapse lyrics" : "Expand lyrics");
-      button.title = expanded ? "Collapse lyrics" : "Expand lyrics";
-      button.dataset.expanded = String(expanded);
+      button.setAttribute("aria-expanded", String(expanded));
     }
     if (resize && typeof win.resizeTo === "function") {
-      const requestedHeight = expanded ? 420 : 82;
+      const requested = expanded ? EXPANDED_SIZE : PILL_SIZE;
       try {
-        win.resizeTo(390, requestedHeight);
+        win.resizeTo(requested.width, requested.height);
         window.setTimeout(() => {
           if (state.pipWindow !== win || win.closed || !win.innerHeight) return;
-          if (Math.abs(win.innerHeight - requestedHeight) > 48) {
+          if (expanded) scrollActiveLine(false);
+          if (Math.abs(win.innerHeight - requested.height) > 48 || Math.abs(win.innerWidth - requested.width) > 48) {
             console.warn("[Popliyric] Spotify did not apply the requested PiP size.", {
-              requestedHeight,
-              actualHeight: win.innerHeight
+              requested,
+              actual: { width: win.innerWidth, height: win.innerHeight }
             });
             Spicetify.showNotification("Spotify blocked PiP resizing. Resize the PiP window manually, then click the arrow again.", true);
           }
@@ -858,7 +859,8 @@
           @keyframes vinyl-spin { to { transform: rotate(360deg); } }
 
           /* Compact pill: 378 x 72 inside the 390 x 82 window. */
-          .collapsed-view { position: absolute; inset: -1px; cursor: grab; user-select: none; }
+          .collapsed-view { position: absolute; inset: -1px; cursor: grab; user-select: none; animation: fade-in .2s ease; }
+          @keyframes fade-in { from { opacity: 0; } }
           .collapsed-view:active { cursor: grabbing; }
           .pill-cover { position: absolute; z-index: 2; left: 0; top: 0; width: 72px; height: 72px; border-radius: 6px; box-shadow: 5px 0 12px #0006; }
           .vinyl-pill { z-index: 1; left: 44px; top: 6px; width: 60px; height: 60px; }
@@ -996,14 +998,13 @@
       docWindow.CSS?.supports?.("-webkit-backdrop-filter", "blur(1px)"));
     console.info("[Popliyric] backdrop-filter supported in PiP:", supportsBackdrop, "(the glass look does not depend on it)");
     let dragStart = null;
-    let suppressClickUntil = 0;
 
-    function makeDragHandle(element, clickToggles) {
+    // Dragging moves the window; only the chevron buttons expand or collapse it.
+    function makeDragHandle(element) {
       element.addEventListener("pointerdown", (event) => {
         // Buttons stay clickable and the lyrics list stays scrollable/selectable.
         if (event.button !== 0 || event.target.closest("button, .lyrics-scroll")) return;
         dragStart = { pointerId: event.pointerId, x: event.screenX, y: event.screenY, moved: false };
-        suppressClickUntil = 0;
         element.setPointerCapture(event.pointerId);
       });
       element.addEventListener("pointermove", (event) => {
@@ -1020,26 +1021,18 @@
       });
       const endDrag = (event) => {
         if (dragStart?.pointerId !== event.pointerId) return;
-        if (dragStart.moved) suppressClickUntil = performance.now() + 300;
         dragStart = null;
       };
       element.addEventListener("pointerup", endDrag);
       element.addEventListener("pointercancel", endDrag);
-      if (clickToggles) {
-        element.addEventListener("click", () => {
-          if (performance.now() < suppressClickUntil) { suppressClickUntil = 0; return; }
-          setExpanded(!state.expanded);
-        });
-      }
     }
 
-    makeDragHandle(doc.getElementById("collapsed-view"), true);
-    makeDragHandle(doc.getElementById("expanded-view"), false);
+    makeDragHandle(doc.getElementById("collapsed-view"));
+    makeDragHandle(doc.getElementById("expanded-view"));
     doc.querySelectorAll("[data-action='toggle-view']").forEach((button) => {
       button.addEventListener("click", (event) => {
         event.stopPropagation();
-        suppressClickUntil = 0;
-        setExpanded(!state.expanded);
+        setExpanded(button.dataset.expanded !== "true");
       });
     });
     doc.querySelectorAll("[data-action]").forEach((button) => {
@@ -1081,7 +1074,7 @@
       return;
     }
     state.pipOpening = true;
-    window.documentPictureInPicture.requestWindow({ width: 390, height: 82 }).then((pipWindow) => {
+    window.documentPictureInPicture.requestWindow({ ...PILL_SIZE }).then((pipWindow) => {
       state.pipWindow = pipWindow;
       state.expanded = false;
       buildPipDocument(pipWindow.document);
