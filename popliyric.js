@@ -187,7 +187,10 @@
     try {
       const platform = Spicetify.Platform;
       const token = platform?.AuthorizationAPI?.getState?.()?.token?.accessToken;
-      if (!token) return { lines: [], synced: false };
+      if (!token) {
+        console.warn("[Popliyric] No Spotify access token available for the lyrics retry.");
+        return { lines: [], synced: false };
+      }
       const response = await fetch(`${LYRICS_HOST}/track/${encodeURIComponent(trackId)}?format=json&vocalRemoval=false&market=from_token`, {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -195,7 +198,10 @@
           "Spotify-App-Version": platform.version
         }
       });
-      if (!response.ok) return { lines: [], synced: false };
+      if (!response.ok) {
+        console.warn("[Popliyric] Lyrics service responded with HTTP", response.status);
+        return { lines: [], synced: false };
+      }
       return parseLyricsResponse(await response.json());
     } catch (error) {
       console.warn("[Popliyric] Authenticated lyrics retry failed:", error?.message || error);
@@ -648,10 +654,14 @@
     }
   }
 
+  // Each renderer is isolated: a UI error must not reach the lyric request's
+  // catch handler, which would otherwise discard lyrics that did arrive.
   function renderAll() {
-    renderLyricMode();
-    renderProgress();
-    renderNextTrack();
+    for (const render of [renderLyricMode, renderProgress, renderNextTrack]) {
+      try { render(); } catch (error) {
+        console.error(`[Popliyric] ${render.name} failed:`, error);
+      }
+    }
   }
 
   function requestTrackLyrics(uri) {
@@ -940,13 +950,12 @@
           .next-name { flex: 1; min-width: 0; overflow: hidden; font-size: 12px; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; }
           .next-chip svg { flex: none; width: 14px; height: 14px; fill: none; stroke: #fff; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 
-          .lyrics-card { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 12px 14px; border-radius: 22px; }
-          .lyrics-head { flex: none; display: flex; align-items: center; justify-content: space-between; }
-          .lyrics-heading { font-size: 17px; font-weight: 700; }
-          .lyrics-head .island-button { width: 30px; height: 30px; margin-right: -6px; }
+          .lyrics-card { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 10px 14px; border-radius: 22px; }
+          .lyrics-head { position: absolute; z-index: 2; top: 6px; right: 6px; }
+          .lyrics-head .island-button { width: 30px; height: 30px; }
           .lyrics-scroll { position: relative; flex: 1; min-height: 0; overflow-y: auto; cursor: auto; user-select: text; scrollbar-width: none; -webkit-mask-image: linear-gradient(transparent, #000 18%, #000 82%, transparent); mask-image: linear-gradient(transparent, #000 18%, #000 82%, transparent); }
           .lyrics-scroll::-webkit-scrollbar { display: none; }
-          #lyrics-list { display: flex; flex-direction: column; gap: 7px; padding: 56px 0; }
+          #lyrics-list { display: flex; flex-direction: column; gap: 7px; padding: 64px 22px 64px 0; }
           .lyric-line { position: relative; flex: none; padding-left: 12px; color: #cfdde4; font-size: 13px; line-height: 1.35; overflow-wrap: break-word; }
           #lyrics-list.unsynced .lyric-line { color: #eef4f7; }
           .lyric-line.active { font-size: 15px; font-weight: 700; line-height: 1.3; background-image: linear-gradient(to bottom, #fff 0%, #fff var(--lyric-progress, 0%), #cbd8de var(--lyric-progress, 0%), #cbd8de 100%); background-clip: text; -webkit-background-clip: text; color: transparent; -webkit-text-fill-color: transparent; }
@@ -1005,7 +1014,7 @@
                 <div id="next-chip" class="next-chip glass" hidden><span class="next-tag">NEXT</span><span id="next-name" class="next-name"></span><svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3.25L10.75 8 6 12.75" /></svg></div>
               </div>
               <section class="lyrics-card glass" aria-label="Lyrics">
-                <div class="lyrics-head"><span class="lyrics-heading">Lyrics</span>${COLLAPSE_BUTTON("")}</div>
+                <div class="lyrics-head">${COLLAPSE_BUTTON("")}</div>
                 <div id="lyrics-loading" class="state-message">Loading lyrics…</div>
                 <div id="lyrics-panel" class="lyrics-scroll"><div id="lyrics-list"></div></div>
                 <div id="track-fallback" class="track-fallback" hidden><div class="fallback-label">NO LYRICS FOR THIS TRACK</div><div id="fallback-album"></div></div>
