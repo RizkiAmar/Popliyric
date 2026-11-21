@@ -1,8 +1,8 @@
 # Changelog
 
-## [2.0.0] - Unreleased
+## [2.0.0] - 2026-11-21
 
-Redesigned player interface. Lyric, track, and playback logic are unchanged.
+Redesigned player interface. Lyrics still come from Spotify's lyrics service (line-synced or unsynchronized); lyric, track, and playback logic are unchanged. Tested with Spotify 1.2.92.148 and Spicetify 2.46.7 on Windows.
 
 ### Changed
 
