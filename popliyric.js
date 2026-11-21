@@ -2,6 +2,7 @@
   const LYRICS_HOST = "https://spclient.wg.spotify.com/color-lyrics/v2";
   const DEFAULT_ACCENT = "#7c8493";
   const DEFAULT_SURFACE = "#17191f";
+  const DEFAULT_PALETTE = ["#2b2e36", "#20232a", "#16181d"];
   const REFRESH_MS = 500;
   const LYRICS_RETRY_MS = 30_000;
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -311,30 +312,7 @@
     }
   }
 
-  function extractDarkColor(image) {
-    const canvas = document.createElement("canvas");
-    canvas.width = canvas.height = 32;
-    const context = canvas.getContext("2d", { willReadFrequently: true });
-    if (!context) return null;
-    context.drawImage(image, 0, 0, 32, 32);
-    const pixels = context.getImageData(0, 0, 32, 32).data;
-    const buckets = new Map();
-    for (let index = 0; index < pixels.length; index += 4) {
-      if (pixels[index + 3] < 160) continue;
-      const key = `${pixels[index] >> 4}:${pixels[index + 1] >> 4}:${pixels[index + 2] >> 4}`;
-      const bucket = buckets.get(key) || { count: 0, red: 0, green: 0, blue: 0 };
-      bucket.count += 1;
-      bucket.red += pixels[index];
-      bucket.green += pixels[index + 1];
-      bucket.blue += pixels[index + 2];
-      buckets.set(key, bucket);
-    }
-    const dominant = [...buckets.values()].sort((left, right) => right.count - left.count)[0];
-    if (!dominant) return null;
-
-    const red = dominant.red / dominant.count / 255;
-    const green = dominant.green / dominant.count / 255;
-    const blue = dominant.blue / dominant.count / 255;
+  function rgbToHsl(red, green, blue) {
     const maximum = Math.max(red, green, blue);
     const minimum = Math.min(red, green, blue);
     const delta = maximum - minimum;
@@ -348,9 +326,101 @@
       else hue = (red - green) / delta + 4;
       hue = (hue * 60 + 360) % 360;
     }
-    const darkSaturation = Math.max(28, Math.min(72, saturation * 82));
-    const darkLightness = Math.max(12, Math.min(28, lightness * 38));
-    return `hsl(${Math.round(hue)} ${Math.round(darkSaturation)}% ${Math.round(darkLightness)}%)`;
+    return { hue, saturation: Math.min(1, saturation), lightness };
+  }
+
+  function hslToRgb(hue, saturation, lightness) {
+    const chroma = (1 - Math.abs(2 * lightness - 1)) * saturation;
+    const segment = hue / 60;
+    const second = chroma * (1 - Math.abs((segment % 2) - 1));
+    const [red, green, blue] = segment < 1 ? [chroma, second, 0]
+      : segment < 2 ? [second, chroma, 0]
+        : segment < 3 ? [0, chroma, second]
+          : segment < 4 ? [0, second, chroma]
+            : segment < 5 ? [second, 0, chroma]
+              : [chroma, 0, second];
+    const offset = lightness - chroma / 2;
+    return [red + offset, green + offset, blue + offset];
+  }
+
+  function relativeLuminance([red, green, blue]) {
+    const linear = (channel) => channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+    return 0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue);
+  }
+
+  // Turns a sampled artwork color into a dark tone that keeps white text at a
+  // contrast ratio of at least 4.5:1 (relative luminance <= 0.183).
+  function toReadableDark({ hue, saturation, lightness }) {
+    const isGray = saturation < 0.12;
+    const darkSaturation = isGray ? saturation * 0.6 : Math.max(0.26, Math.min(0.7, saturation * 0.85));
+    let darkLightness = Math.max(0.1, Math.min(0.3, lightness * 0.5 + 0.06));
+    while (darkLightness > 0.05 && relativeLuminance(hslToRgb(hue, darkSaturation, darkLightness)) > 0.15) {
+      darkLightness -= 0.02;
+    }
+    return `hsl(${Math.round(hue)} ${Math.round(darkSaturation * 100)}% ${Math.round(darkLightness * 100)}%)`;
+  }
+
+  // Picks up to three dominant artwork colors whose hues are visibly distinct.
+  function extractArtworkPalette(image) {
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 32;
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    if (!context) return null;
+    context.drawImage(image, 0, 0, 32, 32);
+    const pixels = context.getImageData(0, 0, 32, 32).data;
+    const buckets = new Map();
+    let sampled = 0;
+    for (let index = 0; index < pixels.length; index += 4) {
+      if (pixels[index + 3] < 160) continue;
+      sampled += 1;
+      const key = `${pixels[index] >> 4}:${pixels[index + 1] >> 4}:${pixels[index + 2] >> 4}`;
+      const bucket = buckets.get(key) || { count: 0, red: 0, green: 0, blue: 0 };
+      bucket.count += 1;
+      bucket.red += pixels[index];
+      bucket.green += pixels[index + 1];
+      bucket.blue += pixels[index + 2];
+      buckets.set(key, bucket);
+    }
+    if (!sampled) return null;
+
+    const candidates = [...buckets.values()].map((bucket) => {
+      const hsl = rgbToHsl(bucket.red / bucket.count / 255, bucket.green / bucket.count / 255, bucket.blue / bucket.count / 255);
+      const usable = hsl.lightness > 0.06 && hsl.lightness < 0.94;
+      return { ...hsl, count: bucket.count, score: bucket.count * (0.3 + 0.7 * hsl.saturation) * (usable ? 1 : 0.15) };
+    }).sort((left, right) => right.score - left.score);
+
+    const minimumShare = Math.max(6, sampled * 0.025);
+    const hueDistance = (left, right) => Math.min(Math.abs(left - right), 360 - Math.abs(left - right));
+    const isDistinct = (candidate, picked) => {
+      const candidateGray = candidate.saturation < 0.12;
+      const pickedGray = picked.saturation < 0.12;
+      if (candidateGray && pickedGray) return Math.abs(candidate.lightness - picked.lightness) >= 0.25;
+      if (candidateGray || pickedGray) return true;
+      return hueDistance(candidate.hue, picked.hue) >= 28;
+    };
+
+    const palette = [];
+    for (const candidate of candidates) {
+      if (palette.length && candidate.count < minimumShare) continue;
+      if (palette.every((picked) => isDistinct(candidate, picked))) palette.push(candidate);
+      if (palette.length === 3) break;
+    }
+    if (!palette.length) return null;
+    if (palette.length === 1) {
+      const [only] = palette;
+      palette.push({ ...only, hue: (only.hue + 18) % 360, lightness: only.lightness * 0.6 });
+    }
+    return palette.map(toReadableDark);
+  }
+
+  function applyPalette(island, palette) {
+    if (!island) return;
+    const colors = Array.isArray(palette) && palette.length ? palette : DEFAULT_PALETTE;
+    const [first, second = first, third = second] = colors;
+    island.style.setProperty("--accent", first);
+    island.style.setProperty("--c1", first);
+    island.style.setProperty("--c2", second);
+    island.style.setProperty("--c3", third);
   }
 
   function applyArtworkColor(url) {
@@ -358,31 +428,32 @@
     if (!win || win.closed) return;
     const island = win.document.getElementById("island");
     if (!url) {
-      island.style.setProperty("--accent", DEFAULT_ACCENT);
+      applyPalette(island, null);
       island.style.setProperty("--surface", DEFAULT_SURFACE);
       return;
     }
     if (state.artworkColors.has(url)) {
-      island.style.setProperty("--accent", state.artworkColors.get(url) || DEFAULT_ACCENT);
+      applyPalette(island, state.artworkColors.get(url));
       return;
     }
+    const applyIfCurrent = (palette) => {
+      if (state.artworkUrl === url && state.pipWindow && !state.pipWindow.closed) {
+        applyPalette(state.pipWindow.document.getElementById("island"), palette);
+      }
+    };
     const image = new Image();
     image.crossOrigin = "anonymous";
     image.onload = () => {
-      let color = null;
-      try { color = extractDarkColor(image); } catch (error) {
+      let palette = null;
+      try { palette = extractArtworkPalette(image); } catch (error) {
         console.warn("[Popliyric] Album color sampling failed:", error?.message || error);
       }
-      cacheArtworkColor(url, color);
-      if (state.artworkUrl === url && state.pipWindow && !state.pipWindow.closed) {
-        state.pipWindow.document.getElementById("island")?.style.setProperty("--accent", color || DEFAULT_ACCENT);
-      }
+      cacheArtworkColor(url, palette);
+      applyIfCurrent(palette);
     };
     image.onerror = () => {
       cacheArtworkColor(url, null);
-      if (state.artworkUrl === url && state.pipWindow && !state.pipWindow.closed) {
-        state.pipWindow.document.getElementById("island")?.style.setProperty("--accent", DEFAULT_ACCENT);
-      }
+      applyIfCurrent(null);
     };
     image.src = url;
   }
@@ -716,12 +787,15 @@
         <title>Popliyric</title>
         <style>
           @property --accent { syntax: "<color>"; inherits: true; initial-value: #7c8493; }
+          @property --c1 { syntax: "<color>"; inherits: true; initial-value: #2b2e36; }
+          @property --c2 { syntax: "<color>"; inherits: true; initial-value: #20232a; }
+          @property --c3 { syntax: "<color>"; inherits: true; initial-value: #16181d; }
           :root { color-scheme: dark; font-family: Inter, "Segoe UI", sans-serif; }
           * { box-sizing: border-box; }
           html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: transparent; color: #f5f5f5; }
           body { padding: 5px 6px; font-family: Inter, "Segoe UI", sans-serif; }
           button { font: inherit; }
-          #island { --accent: ${DEFAULT_ACCENT}; --surface: ${DEFAULT_SURFACE}; width: 100%; height: 100%; overflow: hidden; border: 1px solid #ffffff24; border-radius: 999px; color: #f5f5f5; background-color: var(--surface); background-image: linear-gradient(145deg, color-mix(in srgb, var(--accent) 32%, #13151a), color-mix(in srgb, var(--accent) 8%, #111216) 58%, #111216); box-shadow: 0 8px 28px #0007, inset 0 1px #ffffff14; transition: --accent .55s, border-radius .22s, background .55s, border-color .22s; }
+          #island { --accent: ${DEFAULT_ACCENT}; --surface: ${DEFAULT_SURFACE}; width: 100%; height: 100%; overflow: hidden; border: 1px solid #ffffff24; border-radius: 999px; color: #f5f5f5; background-color: var(--surface); background-image: linear-gradient(90deg, var(--c1), var(--c2) 55%, var(--c3)); box-shadow: 0 8px 28px #0007, inset 0 1px #ffffff14; transition: --accent .55s, --c1 .55s, --c2 .55s, --c3 .55s, border-radius .22s, border-color .22s; }
           #island:hover { border-color: #ffffff45; }
           .collapsed-view { width: 100%; height: 100%; padding: 7px 10px; display: flex; align-items: center; gap: 12px; cursor: grab; user-select: none; }
           .collapsed-view:active, .track-header:active { cursor: grabbing; }
