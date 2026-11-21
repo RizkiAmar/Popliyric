@@ -2,7 +2,8 @@
   const LYRICS_HOST = "https://spclient.wg.spotify.com/color-lyrics/v2";
   const DEFAULT_ACCENT = "#7c8493";
   const DEFAULT_SURFACE = "#17191f";
-  const DEFAULT_PALETTE = ["#2b2e36", "#20232a", "#16181d"];
+  const DEFAULT_PALETTE = ["#46535c", "#2f3d47", "#1f2a32"];
+  const ART_PLACEHOLDER = `<svg class="art-placeholder" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/></svg>`;
   const REFRESH_MS = 500;
   const LYRICS_RETRY_MS = 30_000;
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -279,18 +280,20 @@
   function setArtwork(url) {
     const win = state.pipWindow;
     if (!win || win.closed) return;
+    const images = win.document.querySelectorAll("img[data-artwork]");
     if (!url) {
       state.artworkUrl = "";
-      for (const image of [win.document.getElementById("small-cover"), win.document.getElementById("large-cover")]) {
-        image?.removeAttribute("src");
-        if (image) image.style.opacity = "1";
+      for (const image of images) {
+        image.removeAttribute("src");
+        image.classList.remove("image-error");
+        delete image.dataset.source;
+        image.style.opacity = "1";
       }
       applyArtworkColor("");
       return;
     }
-    const images = [win.document.getElementById("small-cover"), win.document.getElementById("large-cover")];
     for (const image of images) {
-      if (!image || image.dataset.source === url) continue;
+      if (image.dataset.source === url) continue;
       image.dataset.source = url;
       image.classList.remove("image-error");
       image.style.opacity = "0.55";
@@ -787,43 +790,60 @@
         <title>Popliyric</title>
         <style>
           @property --accent { syntax: "<color>"; inherits: true; initial-value: #7c8493; }
-          @property --c1 { syntax: "<color>"; inherits: true; initial-value: #2b2e36; }
-          @property --c2 { syntax: "<color>"; inherits: true; initial-value: #20232a; }
-          @property --c3 { syntax: "<color>"; inherits: true; initial-value: #16181d; }
+          @property --c1 { syntax: "<color>"; inherits: true; initial-value: #46535c; }
+          @property --c2 { syntax: "<color>"; inherits: true; initial-value: #2f3d47; }
+          @property --c3 { syntax: "<color>"; inherits: true; initial-value: #1f2a32; }
           :root { color-scheme: dark; font-family: Inter, "Segoe UI", sans-serif; }
           * { box-sizing: border-box; }
-          html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: transparent; color: #f5f5f5; }
+          html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: transparent; color: #fff; }
           body { padding: 5px 6px; font-family: Inter, "Segoe UI", sans-serif; }
           button { font: inherit; }
-          #island { --accent: ${DEFAULT_ACCENT}; --surface: ${DEFAULT_SURFACE}; width: 100%; height: 100%; overflow: hidden; border: 1px solid #ffffff24; border-radius: 999px; color: #f5f5f5; background-color: var(--surface); background-image: linear-gradient(90deg, var(--c1), var(--c2) 55%, var(--c3)); box-shadow: 0 8px 28px #0007, inset 0 1px #ffffff14; transition: --accent .55s, --c1 .55s, --c2 .55s, --c3 .55s, border-radius .22s, border-color .22s; }
-          #island:hover { border-color: #ffffff45; }
-          .collapsed-view { width: 100%; height: 100%; padding: 7px 10px; display: flex; align-items: center; gap: 12px; cursor: grab; user-select: none; }
-          .collapsed-view:active, .track-header:active { cursor: grabbing; }
-          .expanded-view { width: 100%; height: 100%; padding: 14px 17px 12px; display: none; flex-direction: column; gap: 9px; opacity: 0; }
-          #island.expanded { border-radius: 24px; }
-          #island.expanded .collapsed-view { display: none; }
-          #island.expanded .expanded-view { display: flex; animation: reveal .2s ease forwards; }
-          @keyframes reveal { to { opacity: 1; } }
-          .vinyl { position: relative; display: block; flex: none; overflow: hidden; border-radius: 50%; background-color: #090a0c; background-image: conic-gradient(from 25deg, transparent 0deg, #ffffff21 45deg, transparent 85deg), repeating-radial-gradient(circle, #18191b 0, #090a0c 1px, #202124 2px, #090a0c 3px); animation: vinyl-spin 5s linear infinite; animation-play-state: paused; box-shadow: 0 2px 9px #0009; }
+
+          /* Shell: the pill background; the expanded card is styled further below. */
+          #island { --accent: ${DEFAULT_ACCENT}; --surface: ${DEFAULT_SURFACE}; position: relative; isolation: isolate; width: 100%; height: 100%; border: 1px solid #ffffff3d; border-radius: 999px; color: #fff; background-color: var(--surface); background-image: linear-gradient(90deg, var(--c1), var(--c2) 48%, var(--c3)); box-shadow: 0 8px 28px #0007, inset 0 1px #ffffff2e; transition: --accent .55s, --c1 .55s, --c2 .55s, --c3 .55s, border-radius .22s, border-color .22s; }
+          #island:hover { border-color: #ffffff5c; }
+
+          /* Shared artwork frame with a neutral placeholder underneath the image. */
+          .art-frame { position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; background: linear-gradient(135deg, #2c3a44, #1a232b); }
+          .art-frame img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; color: transparent; font-size: 0; transition: opacity .2s; }
+          .art-placeholder { width: 28px; height: 28px; fill: none; stroke: #9fb0ba; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+          img[data-artwork]:not([src]), img[data-artwork].image-error { visibility: hidden; }
+
+          /* Vinyl: grooved disc whose label shows the artwork; spins while playing. */
+          .vinyl { position: absolute; border-radius: 50%; background: conic-gradient(from 25deg, transparent 0deg, #ffffff2b 45deg, transparent 85deg), repeating-radial-gradient(circle, #1a1b1d 0, #08090a 1px, #232528 2px, #08090a 3px); box-shadow: 0 2px 10px #0009; animation: vinyl-spin 5s linear infinite; animation-play-state: paused; }
           #island.is-playing .vinyl { animation-play-state: running; }
-          .vinyl-small { width: 44px; height: 44px; }
-          .vinyl-large { width: 56px; height: 56px; }
-          .vinyl img { position: absolute; inset: 12.5%; width: 75%; height: 75%; border-radius: 50%; object-fit: cover; color: transparent; font-size: 0; transition: opacity .2s; }
-          .vinyl img.image-error { display: none; }
+          .vinyl-label { position: absolute; left: 19px; top: 19px; width: 22px; height: 22px; overflow: hidden; border-radius: 50%; background: linear-gradient(135deg, #2c3a44, #1a232b); }
+          .vinyl-label img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: opacity .2s; }
           @keyframes vinyl-spin { to { transform: rotate(360deg); } }
-          .collapsed-copy { flex: 1; min-width: 0; display: flex; align-items: center; }
-          .lyric-preview { width: 100%; max-height: 2.7em; overflow: hidden; color: #9298a0; font-size: 14px; font-weight: 600; line-height: 1.35; letter-spacing: -.15px; text-align: center; white-space: normal; overflow-wrap: normal; word-break: normal; background-image: linear-gradient(to bottom,#fff 0%,#fff var(--lyric-progress,0%),#9298a0 var(--lyric-progress,0%),#9298a0 100%); background-clip: text; -webkit-background-clip: text; color: transparent; -webkit-text-fill-color: transparent; }
+
+          /* Compact pill: 378 x 72 inside the 390 x 82 window. */
+          .collapsed-view { position: absolute; inset: -1px; cursor: grab; user-select: none; }
+          .collapsed-view:active { cursor: grabbing; }
+          .pill-cover { position: absolute; z-index: 2; left: 0; top: 0; width: 72px; height: 72px; border-radius: 6px; box-shadow: 5px 0 12px #0006; }
+          .vinyl-pill { z-index: 1; left: 44px; top: 6px; width: 60px; height: 60px; }
+          .collapsed-copy { position: absolute; left: 114px; right: 52px; top: 0; bottom: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 0; text-align: center; }
+          .lyric-preview { width: 100%; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: 14px; font-weight: 600; line-height: 1.35; letter-spacing: -.1px; white-space: normal; overflow-wrap: break-word; background-image: linear-gradient(to bottom, #fff 0%, #fff var(--lyric-progress, 0%), #cbd8de var(--lyric-progress, 0%), #cbd8de 100%); background-clip: text; -webkit-background-clip: text; color: transparent; -webkit-text-fill-color: transparent; }
           .lyric-preview.static-highlight { color: #fff; background: none; -webkit-text-fill-color: currentColor; }
           .fallback-copy { display: none; width: 100%; min-width: 0; }
           #island[data-mode="track-info"] .fallback-copy { display: block; }
           #island[data-mode="track-info"] .lyric-preview { display: none; }
-          .fallback-title, .fallback-secondary { display: block; overflow: hidden; text-overflow: clip; white-space: normal; overflow-wrap: break-word; word-break: normal; }
-          .fallback-title { color: #f5f5f5; font-size: 14px; font-weight: 600; line-height: 1.25; max-height: 2.5em; }
-          .fallback-secondary { margin-top: 3px; color: #a1a1aa; font-size: 12px; line-height: 1.25; max-height: 2.5em; }
-          .island-button { width: 34px; height: 34px; flex: none; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 50%; color: #d1d5db; background: transparent; cursor: pointer; transition: background .16s, color .16s, transform .16s; }
-          .island-button:hover { color: #fff; background: #ffffff16; }
+          .fallback-title, .fallback-secondary { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+          .fallback-title { font-size: 14px; font-weight: 600; line-height: 1.3; }
+          .fallback-secondary { margin-top: 2px; color: #d3e0e6; font-size: 12px; line-height: 1.3; }
+          .collapsed-view .island-button { position: absolute; right: 10px; top: 19px; }
+
+          .island-button { width: 34px; height: 34px; flex: none; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 50%; color: #fff; background: transparent; cursor: pointer; transition: background .16s, transform .16s; }
+          .island-button:hover { background: #ffffff24; }
           .island-button:active { transform: scale(.92); }
-          .island-button svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; transition: transform .18s ease; }
+          .island-button:focus-visible, .control-button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+          .island-button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+          #island.expanded { overflow: hidden; border-radius: 24px; }
+          #island.expanded .collapsed-view { display: none; }
+          .expanded-view { width: 100%; height: 100%; padding: 14px 17px 12px; display: none; flex-direction: column; gap: 9px; opacity: 0; }
+          #island.expanded .expanded-view { display: flex; animation: reveal .2s ease forwards; }
+          @keyframes reveal { to { opacity: 1; } }
+          .track-header:active { cursor: grabbing; }
+          .header-cover { width: 56px; height: 56px; flex: none; border-radius: 8px; }
           .island-button[data-expanded="true"] svg { transform: rotate(180deg); }
           .track-header { min-height: 62px; display: flex; align-items: center; gap: 12px; cursor: grab; user-select: none; }
           .track-info { flex: 1; min-width: 0; }
@@ -857,13 +877,14 @@
           [hidden] { display: none !important; }
           @media (max-height: 280px) { #island.expanded .expanded-view { padding: 7px 10px; gap: 4px; } #island.expanded .track-header { min-height: 50px; } #island.expanded .vinyl-large { width: 46px; height: 46px; } #island.expanded .lyrics-window, #island.expanded .track-fallback { min-height: 48px; } #island.expanded .controls { min-height: 28px; } }
           @media (max-width: 310px) { .collapsed-view { gap: 7px; padding-inline: 7px; } .vinyl-small { width: 38px; height: 38px; } .track-header { gap: 7px; } .expanded-view { padding-inline: 10px; } }
-          @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+          @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; } .vinyl { animation: none !important; } }
         </style>
       </head>
       <body>
         <main id="island" data-mode="lyrics" aria-label="Popliyric player">
-          <section id="collapsed-view" class="collapsed-view" title="Drag to move or click to expand">
-            <span class="vinyl vinyl-small"><img id="small-cover" alt="Album artwork"></span>
+          <section id="collapsed-view" class="collapsed-view" title="Drag to move">
+            <span class="vinyl vinyl-pill" aria-hidden="true"><span class="vinyl-label"><img id="small-label" data-artwork alt=""></span></span>
+            <span class="art-frame pill-cover">${ART_PLACEHOLDER}<img id="small-cover" data-artwork alt="Album artwork"></span>
             <div class="collapsed-copy">
               <div id="small-primary" class="lyric-preview">Loading lyrics…</div>
               <div class="fallback-copy"><span id="small-title" class="fallback-title">Loading track…</span><span id="small-secondary" class="fallback-secondary"></span></div>
@@ -872,7 +893,7 @@
           </section>
           <section id="expanded-view" class="expanded-view" aria-label="Expanded player">
             <header id="track-header" class="track-header" title="Drag to move or click to collapse">
-              <span class="vinyl vinyl-large"><img id="large-cover" alt="Album artwork"></span>
+              <span class="art-frame header-cover">${ART_PLACEHOLDER}<img id="large-cover" data-artwork alt="Album artwork"></span>
               <div class="track-info"><div id="track-title" class="track-title">Loading track…</div><div id="track-artist" class="track-artist"></div><div id="track-album" class="track-album"></div></div>
               <button type="button" class="island-button" data-action="toggle-view" data-expanded="false" aria-label="Collapse lyrics" title="Collapse lyrics"><svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M3.25 6L8 10.75 12.75 6" /></svg></button>
             </header>
