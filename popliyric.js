@@ -789,6 +789,39 @@
     if (!state.isPlaying) cancelWipeAnimation();
   }
 
+  // resizeTo() sets the outer size; add the window frame so the page area
+  // (innerWidth/innerHeight) matches the layout size exactly.
+  function resizeToInner(win, size) {
+    const frameWidth = Math.max(0, (win.outerWidth || 0) - win.innerWidth);
+    const frameHeight = Math.max(0, (win.outerHeight || 0) - win.innerHeight);
+    win.resizeTo(size.width + frameWidth, size.height + frameHeight);
+  }
+
+  // Document PiP cannot disable manual resizing, so the window snaps back to
+  // the size of the current view shortly after the user stops resizing it.
+  function lockWindowSize(win) {
+    let timer = 0;
+    let streak = 0;
+    let lastAttempt = 0;
+    win.addEventListener("resize", () => {
+      win.clearTimeout(timer);
+      timer = win.setTimeout(() => {
+        if (state.pipWindow !== win || win.closed) return;
+        const target = state.expanded ? EXPANDED_SIZE : PILL_SIZE;
+        if (Math.abs(win.innerWidth - target.width) <= 2 && Math.abs(win.innerHeight - target.height) <= 2) {
+          streak = 0;
+          return;
+        }
+        // Give up after a few quick retries if Spotify refuses or clamps the size.
+        const now = performance.now();
+        streak = now - lastAttempt < 1500 ? streak + 1 : 1;
+        lastAttempt = now;
+        if (streak > 3) return;
+        try { resizeToInner(win, target); } catch (_) {}
+      }, 220);
+    });
+  }
+
   function setExpanded(expanded, resize = true) {
     state.expanded = expanded;
     const win = state.pipWindow;
@@ -801,7 +834,7 @@
     if (resize && typeof win.resizeTo === "function") {
       const requested = expanded ? EXPANDED_SIZE : PILL_SIZE;
       try {
-        win.resizeTo(requested.width, requested.height);
+        resizeToInner(win, requested);
         window.setTimeout(() => {
           if (state.pipWindow !== win || win.closed || !win.innerHeight) return;
           if (expanded) scrollActiveLine(false);
@@ -837,13 +870,15 @@
           @property --c3 { syntax: "<color>"; inherits: true; initial-value: #1f2a32; }
           :root { color-scheme: dark; font-family: Inter, "Segoe UI", sans-serif; }
           * { box-sizing: border-box; }
-          html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: transparent; color: #fff; }
-          body { padding: 5px 6px; font-family: Inter, "Segoe UI", sans-serif; }
+          html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #0b0d10; color: #fff; }
+          body { padding: 0; font-family: Inter, "Segoe UI", sans-serif; }
           button { font: inherit; }
 
-          /* Shell: the pill background; the expanded card is styled further below. */
-          #island { --accent: ${DEFAULT_ACCENT}; --surface: ${DEFAULT_SURFACE}; position: relative; isolation: isolate; width: 100%; height: 100%; border: 1px solid #ffffff3d; border-radius: 999px; color: #fff; background-color: var(--surface); background-image: linear-gradient(90deg, var(--c1), var(--c2) 48%, var(--c3)); box-shadow: 0 8px 28px #0007, inset 0 1px #ffffff2e; transition: --accent .55s, --c1 .55s, --c2 .55s, --c3 .55s, border-radius .22s, border-color .22s; }
-          #island:hover { border-color: #ffffff5c; }
+          /* Shell: fills the whole PiP window, because a Document PiP window is an
+             opaque rectangle and a rounded shape inside it leaves dark corners.
+             The max size keeps the layout from stretching while the window is
+             being resized; the window then snaps back to its fixed size. */
+          #island { --accent: ${DEFAULT_ACCENT}; --surface: ${DEFAULT_SURFACE}; position: relative; isolation: isolate; width: 100%; height: 100%; max-width: ${PILL_SIZE.width}px; max-height: ${PILL_SIZE.height}px; overflow: hidden; color: #fff; background-color: var(--surface); background-image: linear-gradient(90deg, var(--c1), var(--c2) 48%, var(--c3)); box-shadow: inset 0 1px #ffffff1f; transition: --accent .55s, --c1 .55s, --c2 .55s, --c3 .55s; }
 
           /* Shared artwork frame with a neutral placeholder underneath the image. */
           .art-frame { position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; background: linear-gradient(135deg, #2c3a44, #1a232b); }
@@ -854,34 +889,34 @@
           /* Vinyl: grooved disc whose label shows the artwork; spins while playing. */
           .vinyl { position: absolute; border-radius: 50%; background: conic-gradient(from 25deg, transparent 0deg, #ffffff2b 45deg, transparent 85deg), repeating-radial-gradient(circle, #1a1b1d 0, #08090a 1px, #232528 2px, #08090a 3px); box-shadow: 0 2px 10px #0009; animation: vinyl-spin 5s linear infinite; animation-play-state: paused; }
           #island.is-playing .vinyl { animation-play-state: running; }
-          .vinyl-label { position: absolute; left: 19px; top: 19px; width: 22px; height: 22px; overflow: hidden; border-radius: 50%; background: linear-gradient(135deg, #2c3a44, #1a232b); }
+          .vinyl-label { position: absolute; left: 31.67%; top: 31.67%; width: 36.67%; height: 36.67%; overflow: hidden; border-radius: 50%; background: linear-gradient(135deg, #2c3a44, #1a232b); }
           .vinyl-label img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: opacity .2s; }
           @keyframes vinyl-spin { to { transform: rotate(360deg); } }
 
-          /* Compact pill: 378 x 72 inside the 390 x 82 window. */
-          .collapsed-view { position: absolute; inset: -1px; cursor: grab; user-select: none; animation: fade-in .2s ease; }
+          .collapsed-view { position: absolute; inset: 0; cursor: grab; user-select: none; animation: fade-in .2s ease; }
           @keyframes fade-in { from { opacity: 0; } }
           .collapsed-view:active { cursor: grabbing; }
-          .pill-cover { position: absolute; z-index: 2; left: 0; top: 0; width: 72px; height: 72px; border-radius: 6px; box-shadow: 5px 0 12px #0006; }
-          .vinyl-pill { z-index: 1; left: 44px; top: 6px; width: 60px; height: 60px; }
-          .collapsed-copy { position: absolute; left: 114px; right: 52px; top: 0; bottom: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 0; text-align: center; }
-          .lyric-preview { width: 100%; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: 14px; font-weight: 600; line-height: 1.35; letter-spacing: -.1px; white-space: normal; overflow-wrap: break-word; background-image: linear-gradient(to bottom, #fff 0%, #fff var(--lyric-progress, 0%), #cbd8de var(--lyric-progress, 0%), #cbd8de 100%); background-clip: text; -webkit-background-clip: text; color: transparent; -webkit-text-fill-color: transparent; }
+          /* Compact player: 390 x 82; artwork is as tall as the window. */
+          .pill-cover { position: absolute; z-index: 2; left: 0; top: 0; width: 82px; height: 82px; box-shadow: 5px 0 12px #0006; }
+          .vinyl-pill { z-index: 1; left: 50px; top: 7px; width: 68px; height: 68px; }
+          .collapsed-copy { position: absolute; left: 130px; right: 56px; top: 0; bottom: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 0; text-align: center; }
+          .lyric-preview { width: 100%; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: 16px; font-weight: 600; line-height: 1.3; letter-spacing: -.1px; white-space: normal; overflow-wrap: break-word; background-image: linear-gradient(to bottom, #fff 0%, #fff var(--lyric-progress, 0%), #cbd8de var(--lyric-progress, 0%), #cbd8de 100%); background-clip: text; -webkit-background-clip: text; color: transparent; -webkit-text-fill-color: transparent; }
           .lyric-preview.static-highlight { color: #fff; background: none; -webkit-text-fill-color: currentColor; }
           .fallback-copy { display: none; width: 100%; min-width: 0; }
           #island[data-mode="track-info"] .fallback-copy { display: block; }
           #island[data-mode="track-info"] .lyric-preview { display: none; }
           .fallback-title, .fallback-secondary { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-          .fallback-title { font-size: 14px; font-weight: 600; line-height: 1.3; }
-          .fallback-secondary { margin-top: 2px; color: #d3e0e6; font-size: 12px; line-height: 1.3; }
-          .collapsed-view .island-button { position: absolute; right: 10px; top: 19px; }
+          .fallback-title { font-size: 16px; font-weight: 600; line-height: 1.3; }
+          .fallback-secondary { margin-top: 2px; color: #d3e0e6; font-size: 13px; line-height: 1.3; }
+          .collapsed-view .island-button { position: absolute; right: 12px; top: 24px; }
 
           .island-button { width: 34px; height: 34px; flex: none; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 50%; color: #fff; background: transparent; cursor: pointer; transition: background .16s, transform .16s; }
           .island-button:hover { background: #ffffff24; }
           .island-button:active { transform: scale(.92); }
           .island-button:focus-visible, .control-button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
           .island-button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-          /* Expanded card (layout B): 448 x 342 inside the 460 x 352 window. */
-          #island.expanded { overflow: hidden; border-radius: 28px; background-color: #0b1218; background-image: none; }
+          /* Expanded card (layout B): fills the 460 x 352 window. */
+          #island.expanded { max-width: ${EXPANDED_SIZE.width}px; max-height: ${EXPANDED_SIZE.height}px; background-color: #0b1218; background-image: none; }
           #island.expanded .collapsed-view { display: none; }
 
           /* Fake glass: blurred artwork + dark shade behind semi-transparent panels.
@@ -893,7 +928,7 @@
           .glass { background: linear-gradient(135deg, #ffffff2e, #ffffff0f); border: 1px solid #ffffff40; box-shadow: inset 0 1px #ffffff26, 0 6px 20px #0004; }
           @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { .glass { -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); } }
 
-          .expanded-view { position: relative; z-index: 1; width: 100%; height: 100%; padding: 16px; display: none; flex-direction: column; justify-content: space-between; opacity: 0; cursor: grab; user-select: none; }
+          .expanded-view { position: relative; z-index: 1; width: 100%; height: 100%; padding: 18px; display: none; flex-direction: column; justify-content: space-between; opacity: 0; cursor: grab; user-select: none; }
           .expanded-view:active { cursor: grabbing; }
           #island.expanded .expanded-view { display: flex; animation: reveal .2s ease forwards; }
           @keyframes reveal { to { opacity: 1; } }
@@ -997,6 +1032,14 @@
     const supportsBackdrop = Boolean(docWindow.CSS?.supports?.("backdrop-filter", "blur(1px)") ||
       docWindow.CSS?.supports?.("-webkit-backdrop-filter", "blur(1px)"));
     console.info("[Popliyric] backdrop-filter supported in PiP:", supportsBackdrop, "(the glass look does not depend on it)");
+    lockWindowSize(docWindow);
+    // The window resize after expanding is asynchronous; centre the active line
+    // once the lyrics panel actually has a height.
+    if (typeof docWindow.ResizeObserver === "function") {
+      new docWindow.ResizeObserver(() => {
+        if (state.expanded) scrollActiveLine(false);
+      }).observe(doc.getElementById("lyrics-panel"));
+    }
     let dragStart = null;
 
     // Dragging moves the window; only the chevron buttons expand or collapse it.

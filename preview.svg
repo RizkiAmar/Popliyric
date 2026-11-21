@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1200" height="760" viewBox="0 0 1200 760" role="img" aria-labelledby="title description">
   <title id="title">Popliyric v2 compact and expanded player</title>
-  <desc id="description">Three compact pill variants with square artwork and a vinyl record sliding out behind it, next to the expanded player with large artwork, a Next chip, a glass lyrics panel, and a glass playback bar. Artwork, lyrics, and names are placeholders.</desc>
+  <desc id="description">Three compact player variants with square artwork and a vinyl record sliding out behind it, next to the expanded player with large artwork, a Next chip, a glass lyrics panel, and a glass playback bar. Artwork, lyrics, and names are placeholders.</desc>
   <defs>
     <linearGradient id="backdrop" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#101217"/><stop offset="1" stop-color="#1c2028"/></linearGradient>
     <linearGradient id="art-bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#22a5c9"/><stop offset="1" stop-color="#0f6a8e"/></linearGradient>
@@ -22,9 +22,9 @@
     </symbol>
     <symbol id="note" viewBox="0 0 24 24"><path d="M9 18V6l10-2v12" fill="none" stroke="#9fb0ba" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="6.5" cy="18" r="2.5" fill="none" stroke="#9fb0ba" stroke-width="1.6"/><circle cx="16.5" cy="16" r="2.5" fill="none" stroke="#9fb0ba" stroke-width="1.6"/></symbol>
     <symbol id="chevron-down" viewBox="0 0 16 16"><path d="M3.25 6L8 10.75 12.75 6" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
-    <clipPath id="pill-cover-clip"><rect width="72" height="72" rx="6"/></clipPath>
+    <clipPath id="pill-cover-clip"><rect width="72" height="72"/></clipPath>
     <clipPath id="label-clip"><circle cx="74" cy="36" r="11"/></clipPath>
-    <clipPath id="card-clip"><rect width="448" height="342" rx="28"/></clipPath>
+    <clipPath id="card-clip"><rect width="448" height="342"/></clipPath>
     <clipPath id="large-cover-clip"><rect x="16" y="16" width="150" height="150" rx="18"/></clipPath>
     <style>
       .ui{font-family:Inter,Segoe UI,Arial,sans-serif}.white{fill:#fff}.soft{fill:#d3e0e6}.muted{fill:#a1a1aa}.label{font-size:12px;font-weight:600;letter-spacing:1.2px}
@@ -43,19 +43,19 @@
 
   <!-- Pill: synchronized lyric, playing -->
   <g transform="translate(56 190) scale(1.2)">
-    <rect x=".5" y=".5" width="377" height="71" rx="35.5" fill="url(#pill-color)" stroke="#fff" stroke-opacity=".24" filter="url(#shadow)"/>
+    <rect x=".5" y=".5" width="377" height="71" fill="url(#pill-color)" stroke="#fff" stroke-opacity=".24" filter="url(#shadow)"/>
     <use href="#vinyl" xlink:href="#vinyl"/>
     <g clip-path="url(#label-clip)"><use href="#art" xlink:href="#art" x="63" y="25" width="22" height="22"/></g>
     <g filter="url(#cover-shadow)"><g clip-path="url(#pill-cover-clip)"><use href="#art" xlink:href="#art" width="72" height="72"/></g></g>
-    <text x="220" y="32" text-anchor="middle" class="ui white" font-size="14" font-weight="600">Neon rain on the avenue,</text>
-    <text x="220" y="51" text-anchor="middle" class="ui" fill="#cbd8de" font-size="14" font-weight="600">I keep walking home</text>
+    <text x="220" y="32" text-anchor="middle" class="ui white" font-size="15" font-weight="600">Neon rain on the avenue,</text>
+    <text x="220" y="52" text-anchor="middle" class="ui" fill="#cbd8de" font-size="15" font-weight="600">I keep walking home</text>
     <use href="#chevron-down" xlink:href="#chevron-down" x="335" y="28" width="16" height="16"/>
   </g>
   <text x="56" y="306" class="ui muted" font-size="12">Synchronized lyric with line wipe · vinyl spins while playing</text>
 
   <!-- Pill: no lyrics -->
   <g transform="translate(56 336) scale(1.2)">
-    <rect x=".5" y=".5" width="377" height="71" rx="35.5" fill="url(#pill-color)" stroke="#fff" stroke-opacity=".24" filter="url(#shadow)"/>
+    <rect x=".5" y=".5" width="377" height="71" fill="url(#pill-color)" stroke="#fff" stroke-opacity=".24" filter="url(#shadow)"/>
     <use href="#vinyl" xlink:href="#vinyl"/>
     <g clip-path="url(#label-clip)"><use href="#art" xlink:href="#art" x="63" y="25" width="22" height="22"/></g>
     <g filter="url(#cover-shadow)"><g clip-path="url(#pill-cover-clip)"><use href="#art" xlink:href="#art" width="72" height="72"/></g></g>
@@ -67,10 +67,10 @@
 
   <!-- Pill: no artwork -->
   <g transform="translate(56 482) scale(1.2)">
-    <rect x=".5" y=".5" width="377" height="71" rx="35.5" fill="url(#pill-neutral)" stroke="#fff" stroke-opacity=".24" filter="url(#shadow)"/>
+    <rect x=".5" y=".5" width="377" height="71" fill="url(#pill-neutral)" stroke="#fff" stroke-opacity=".24" filter="url(#shadow)"/>
     <use href="#vinyl" xlink:href="#vinyl"/>
     <circle cx="74" cy="36" r="11" fill="url(#art-none)"/>
-    <g filter="url(#cover-shadow)"><rect width="72" height="72" rx="6" fill="url(#art-none)"/></g>
+    <g filter="url(#cover-shadow)"><rect width="72" height="72" fill="url(#art-none)"/></g>
     <use href="#note" xlink:href="#note" x="22" y="22" width="28" height="28"/>
     <text x="220" y="41" text-anchor="middle" class="ui white" font-size="14" font-weight="600">Loading lyrics…</text>
     <use href="#chevron-down" xlink:href="#chevron-down" x="335" y="28" width="16" height="16"/>
@@ -81,12 +81,12 @@
 
   <!-- Expanded card (layout B) -->
   <g transform="translate(566 190) scale(1.3)">
-    <g filter="url(#shadow)"><rect width="448" height="342" rx="28" fill="#0b2a3a"/></g>
+    <g filter="url(#shadow)"><rect width="448" height="342" fill="#0b2a3a"/></g>
     <g clip-path="url(#card-clip)">
       <use href="#art" xlink:href="#art" x="-60" y="-60" width="568" height="462" preserveAspectRatio="none" filter="url(#soft)" opacity=".95"/>
       <rect width="448" height="342" fill="url(#shade)"/>
     </g>
-    <rect x=".5" y=".5" width="447" height="341" rx="27.5" fill="none" stroke="#fff" stroke-opacity=".24"/>
+    <rect x=".5" y=".5" width="447" height="341" fill="none" stroke="#fff" stroke-opacity=".24"/>
 
     <g clip-path="url(#large-cover-clip)"><use href="#art" xlink:href="#art" x="16" y="16" width="150" height="150"/></g>
 

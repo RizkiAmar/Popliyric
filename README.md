@@ -54,7 +54,7 @@ spicetify apply
 1. Play a track in Spotify.
 2. Select the **Popliyric** waveform button in the top bar.
 3. Select the chevron on the right of the pill to expand the player, and the chevron in the **Lyrics** panel to collapse it.
-4. Drag the pill or the card to move the window.
+4. Drag the player to move the window. The window size is fixed; if you resize it by hand, it snaps back.
 5. Use the playback controls in the expanded view.
 6. Select the Popliyric button again or close the PiP window to dismiss the player.
 
