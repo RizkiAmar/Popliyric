@@ -1129,6 +1129,9 @@
     window.documentPictureInPicture.requestWindow({ ...PILL_SIZE }).then((pipWindow) => {
       state.pipWindow = pipWindow;
       state.expanded = false;
+      // The new document has no artwork yet; forget the URL shown in the previous
+      // window so the next update loads the artwork and palette again.
+      state.artworkUrl = "";
       buildPipDocument(pipWindow.document);
       updateFromPlayer();
       if (!state.refreshTimer) state.refreshTimer = window.setInterval(updateFromPlayer, REFRESH_MS);

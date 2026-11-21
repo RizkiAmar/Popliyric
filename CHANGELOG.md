@@ -19,6 +19,7 @@ Redesigned player interface. Lyric, track, and playback logic are unchanged.
 
 - Lyrics that arrive on a retry for the same track are now displayed instead of leaving an empty list.
 - Centering the active lyric no longer scrolls the whole expanded card.
+- Reopening the player on the same track loads the artwork and its colors again instead of showing the placeholder.
 
 ## [1.0.0] - 2026-11-13
 
