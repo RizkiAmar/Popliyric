@@ -3,7 +3,8 @@
   const DEFAULT_ACCENT = "#7c8493";
   const DEFAULT_SURFACE = "#17191f";
   const DEFAULT_PALETTE = ["#46535c", "#2f3d47", "#1f2a32"];
-  const ART_PLACEHOLDER = `<svg class="art-placeholder" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/></svg>`;
+  const COLLAPSE_BUTTON = (extraClass) => `<button type="button" class="island-button ${extraClass}" data-action="toggle-view" data-expanded="true" aria-label="Collapse lyrics" title="Collapse lyrics"><svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M3.25 10L8 5.25 12.75 10" /></svg></button>`;
+  const ART_PLACEHOLDER =`<svg class="art-placeholder" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/></svg>`;
   const REFRESH_MS = 500;
   const LYRICS_RETRY_MS = 30_000;
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -486,9 +487,8 @@
       secondary.hidden = hasLyrics || isLoading;
       doc.getElementById("track-title").textContent = track.title || "Loading track…";
       doc.getElementById("track-artist").textContent = track.artist;
-      doc.getElementById("track-album").textContent = track.album;
       doc.getElementById("small-title").textContent = track.title || "Loading track…";
-      doc.getElementById("fallback-album").textContent = track.album;
+      doc.getElementById("fallback-album").textContent = track.album ? `From ${track.album}` : "";
     } else {
       doc.getElementById("small-primary").textContent = "No track playing";
       doc.getElementById("small-title").textContent = "No track playing";
@@ -496,18 +496,21 @@
       doc.getElementById("small-secondary").hidden = true;
       doc.getElementById("track-title").textContent = "No track playing";
       doc.getElementById("track-artist").textContent = "Play a song in Spotify";
-      doc.getElementById("track-album").textContent = "";
       doc.getElementById("fallback-album").textContent = "";
     }
 
     const list = doc.getElementById("lyrics-list");
     if (!hasLyrics) {
       list.replaceChildren();
+      // Forget the rendered track so a later retry for the same URI rebuilds the lines.
+      delete list.dataset.uri;
       state.activeIndex = -1;
       return;
     }
+    list.classList.toggle("unsynced", !state.lyricsSynced);
     if (list.dataset.uri !== state.trackUri) {
       list.dataset.uri = state.trackUri;
+      list.parentElement.scrollTop = 0;
       list.replaceChildren(...state.lyrics.map((line, index) => {
         const element = doc.createElement("div");
         element.className = "lyric-line";
@@ -524,11 +527,51 @@
       list.querySelectorAll(".lyric-line").forEach((line, index) => {
         line.classList.toggle("active", index === active);
       });
-      if (active >= 0 && state.expanded) {
-        list.querySelector(`[data-index="${active}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" });
-      }
+      if (active >= 0 && state.expanded) scrollActiveLine(true);
     }
     applyWipe();
+  }
+
+  // Centres the active line inside the lyrics panel only. scrollIntoView() could
+  // also scroll the overflow-hidden card, which shifts the whole layout.
+  function scrollActiveLine(smooth) {
+    const win = state.pipWindow;
+    if (!win || win.closed) return;
+    const scroller = win.document.getElementById("lyrics-panel");
+    const line = scroller?.querySelector(`[data-index="${state.activeIndex}"]`);
+    if (!line || !scroller.clientHeight) return;
+    const reduceMotion = win.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    scroller.scrollTo({
+      top: line.offsetTop - (scroller.clientHeight - line.offsetHeight) / 2,
+      behavior: smooth && !reduceMotion ? "smooth" : "auto"
+    });
+  }
+
+  function readNextTrack() {
+    const upcoming = Spicetify.Queue?.nextTracks;
+    if (!Array.isArray(upcoming)) return null;
+    for (const entry of upcoming) {
+      const item = entry?.contextTrack || entry;
+      const uri = typeof item?.uri === "string" ? item.uri : "";
+      if (!uri || uri.includes("delimiter")) continue;
+      const title = safeText(item.metadata?.title || item.name, "");
+      if (title) return { title, artist: safeText(item.metadata?.artist_name || "", "") };
+    }
+    return null;
+  }
+
+  function renderNextTrack() {
+    const win = state.pipWindow;
+    if (!win || win.closed) return;
+    const chip = win.document.getElementById("next-chip");
+    const name = win.document.getElementById("next-name");
+    if (!chip || !name) return;
+    let next = null;
+    try { next = readNextTrack(); } catch (_) { next = null; }
+    chip.hidden = !next;
+    const label = next ? next.title : "";
+    if (name.textContent !== label) name.textContent = label;
+    chip.title = next ? [next.title, next.artist].filter(Boolean).join(" — ") : "";
   }
 
   function renderProgress() {
@@ -606,6 +649,7 @@
   function renderAll() {
     renderLyricMode();
     renderProgress();
+    renderNextTrack();
   }
 
   function requestTrackLyrics(uri) {
@@ -775,10 +819,7 @@
     } else if (resize) {
       console.warn("[Popliyric] This PiP window does not expose resizeTo().");
     }
-    if (expanded) {
-      const active = win.document.querySelector(`[data-index="${state.activeIndex}"]`);
-      active?.scrollIntoView({ block: "center", behavior: "smooth" });
-    }
+    if (expanded) win.requestAnimationFrame(() => scrollActiveLine(false));
   }
 
   function buildPipDocument(doc) {
@@ -837,46 +878,74 @@
           .island-button:active { transform: scale(.92); }
           .island-button:focus-visible, .control-button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
           .island-button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-          #island.expanded { overflow: hidden; border-radius: 24px; }
+          /* Expanded card (layout B): 448 x 342 inside the 460 x 352 window. */
+          #island.expanded { overflow: hidden; border-radius: 28px; background-color: #0b1218; background-image: none; }
           #island.expanded .collapsed-view { display: none; }
-          .expanded-view { width: 100%; height: 100%; padding: 14px 17px 12px; display: none; flex-direction: column; gap: 9px; opacity: 0; }
+
+          /* Fake glass: blurred artwork + dark shade behind semi-transparent panels.
+             It does not depend on backdrop-filter, which is only added as an enhancement. */
+          .card-backdrop { position: absolute; inset: 0; z-index: 0; display: none; overflow: hidden; border-radius: inherit; background: linear-gradient(150deg, var(--c1), var(--c2) 55%, var(--c3)); }
+          #island.expanded .card-backdrop { display: block; }
+          .card-backdrop img { position: absolute; left: -60px; top: -60px; width: calc(100% + 120px); height: calc(100% + 120px); object-fit: cover; filter: blur(38px) saturate(1.5); opacity: .95; transform: translateZ(0); }
+          .card-backdrop::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, #05080b66, #05080ba6); }
+          .glass { background: linear-gradient(135deg, #ffffff2e, #ffffff0f); border: 1px solid #ffffff40; box-shadow: inset 0 1px #ffffff26, 0 6px 20px #0004; }
+          @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { .glass { -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); } }
+
+          .expanded-view { position: relative; z-index: 1; width: 100%; height: 100%; padding: 16px; display: none; flex-direction: column; justify-content: space-between; opacity: 0; cursor: grab; user-select: none; }
+          .expanded-view:active { cursor: grabbing; }
           #island.expanded .expanded-view { display: flex; animation: reveal .2s ease forwards; }
           @keyframes reveal { to { opacity: 1; } }
-          .track-header:active { cursor: grabbing; }
-          .header-cover { width: 56px; height: 56px; flex: none; border-radius: 8px; }
-          .island-button[data-expanded="true"] svg { transform: rotate(180deg); }
-          .track-header { min-height: 62px; display: flex; align-items: center; gap: 12px; cursor: grab; user-select: none; }
-          .track-info { flex: 1; min-width: 0; }
-          .track-title { color: #f5f5f5; font-size: 14px; font-weight: 600; line-height: 1.3; white-space: normal; overflow-wrap: break-word; word-break: normal; max-height: 2.6em; overflow: hidden; }
-          .track-artist { margin-top: 3px; color: #a1a1aa; font-size: 12px; font-weight: 400; line-height: 1.25; white-space: normal; overflow-wrap: break-word; word-break: normal; max-height: 1.25em; overflow: hidden; }
-          .track-album { margin-top: 2px; color: #858995; font-size: 11px; line-height: 1.2; white-space: normal; overflow: hidden; }
-          .lyrics-window { flex: 1; min-height: 88px; overflow: auto; padding: 9px 12px; border: 1px solid #ffffff0d; border-radius: 18px; background: #07080b65; scrollbar-width: thin; scrollbar-color: #ffffff32 transparent; text-align: center; }
-          .lyrics-window[hidden], .state-message[hidden], .track-fallback[hidden] { display: none; }
-          #lyrics-list { min-height: 100%; display: flex; flex-direction: column; justify-content: center; }
-          .lyric-line { flex: 0 0 auto; width: 100%; max-height: 3em; overflow: hidden; padding: 4px 0; color: #9298a0; font-size: 13px; font-weight: 500; line-height: 1.5; text-align: center; white-space: normal; overflow-wrap: normal; word-break: normal; }
-          .lyric-line.active { color: #fff; font-size: 15px; font-weight: 600; background-image: linear-gradient(to bottom,#fff 0%,#fff var(--lyric-progress,0%),#9298a0 var(--lyric-progress,0%),#9298a0 100%); background-clip: text; -webkit-background-clip: text; color: transparent; -webkit-text-fill-color: transparent; }
+          .row-top { display: flex; gap: 16px; height: 196px; min-height: 0; }
+          .left-col { width: 150px; flex: none; display: flex; flex-direction: column; gap: 10px; }
+          .large-cover { width: 150px; height: 150px; flex: none; border-radius: 18px; box-shadow: 0 10px 24px #0008; }
+          .next-chip { height: 36px; min-width: 0; display: flex; align-items: center; gap: 6px; padding: 0 10px 0 12px; border-radius: 999px; }
+          .next-tag { flex: none; color: #bfeaff; font-size: 10px; font-weight: 700; letter-spacing: .08em; }
+          .next-name { flex: 1; min-width: 0; overflow: hidden; font-size: 12px; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; }
+          .next-chip svg { flex: none; width: 14px; height: 14px; fill: none; stroke: #fff; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+          .lyrics-card { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 12px 14px; border-radius: 22px; }
+          .lyrics-head { flex: none; display: flex; align-items: center; justify-content: space-between; }
+          .lyrics-heading { font-size: 17px; font-weight: 700; }
+          .lyrics-head .island-button { width: 30px; height: 30px; margin-right: -6px; }
+          .lyrics-scroll { position: relative; flex: 1; min-height: 0; overflow-y: auto; cursor: auto; user-select: text; scrollbar-width: none; -webkit-mask-image: linear-gradient(transparent, #000 18%, #000 82%, transparent); mask-image: linear-gradient(transparent, #000 18%, #000 82%, transparent); }
+          .lyrics-scroll::-webkit-scrollbar { display: none; }
+          #lyrics-list { display: flex; flex-direction: column; gap: 7px; padding: 56px 0; }
+          .lyric-line { position: relative; flex: none; padding-left: 12px; color: #cfdde4; font-size: 13px; line-height: 1.35; overflow-wrap: break-word; }
+          #lyrics-list.unsynced .lyric-line { color: #eef4f7; }
+          .lyric-line.active { font-size: 15px; font-weight: 700; line-height: 1.3; background-image: linear-gradient(to bottom, #fff 0%, #fff var(--lyric-progress, 0%), #cbd8de var(--lyric-progress, 0%), #cbd8de 100%); background-clip: text; -webkit-background-clip: text; color: transparent; -webkit-text-fill-color: transparent; }
           .lyric-line.active.static-highlight { color: #fff; background: none; -webkit-text-fill-color: currentColor; }
-          .state-message { padding: 16px 4px; color: #a1a1aa; font-size: 13px; line-height: 1.5; text-align: center; }
-          .track-fallback { flex: 1; min-height: 88px; padding: 16px; display: flex; flex-direction: column; justify-content: center; border: 1px solid #ffffff0d; border-radius: 18px; background: #07080b65; }
-          .fallback-label { color: #a1a1aa; font-size: 10px; font-weight: 600; letter-spacing: .1em; }
-          #fallback-album { margin-top: 8px; color: #f5f5f5; font-size: 15px; font-weight: 600; line-height: 1.4; white-space: normal; overflow-wrap: break-word; }
-          .progress-row { display: flex; align-items: center; gap: 8px; color: #9298a0; font-size: 10px; font-variant-numeric: tabular-nums; }
-          .progress-track { flex: 1; height: 3px; overflow: hidden; border-radius: 999px; background: #ffffff28; }
-          #progress-fill { display: block; width: 0; height: 100%; border-radius: inherit; background: #f5f5f5; transition: width .12s linear; }
-          .controls { min-height: 34px; display: flex; align-items: center; justify-content: center; gap: 20px; }
-          .control-button { width: 36px; height: 34px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 50%; color: #e5e7eb; background: transparent; cursor: pointer; transition: color .15s, transform .15s; }
-          .control-button:hover { color: #fff; }
+          .lyric-line.active::before { content: ""; position: absolute; left: 0; top: 1px; bottom: 1px; width: 3px; border-radius: 2px; background: #6fdcff; }
+          .state-message { flex: 1; display: flex; align-items: center; justify-content: center; color: #d3e0e6; font-size: 13px; text-align: center; }
+          .track-fallback { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: center; gap: 6px; }
+          .fallback-label { color: #bfeaff; font-size: 10px; font-weight: 700; letter-spacing: .08em; }
+          #fallback-album { color: #d3e0e6; font-size: 13px; line-height: 1.35; overflow-wrap: break-word; }
+
+          .now-bar { flex: none; height: 90px; display: flex; flex-direction: column; justify-content: space-between; padding: 10px 16px 12px; border-radius: 24px; }
+          .bar-top { display: flex; align-items: center; gap: 12px; }
+          .now-meta { flex: 1; min-width: 0; }
+          .track-title, .track-artist { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+          .track-title { font-size: 14px; font-weight: 700; line-height: 1.3; }
+          .track-artist { margin-top: 1px; color: #d3e0e6; font-size: 12px; line-height: 1.3; }
+          .controls { flex: none; display: flex; align-items: center; gap: 6px; }
+          .control-button { width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 50%; color: #fff; background: transparent; cursor: pointer; transition: background .15s, transform .15s; }
+          .control-button:hover { background: #ffffff24; }
           .control-button:active { transform: scale(.92); }
-          .control-button svg { width: 19px; height: 19px; fill: currentColor; }
-          .control-button.play-toggle svg { width: 21px; height: 21px; }
-          .control-button.play-toggle .play-icon { display: block !important; }
-          .control-button.play-toggle .pause-icon { display: none !important; }
-          .control-button.play-toggle[data-playing="true"] .play-icon { display: none !important; }
-          .control-button.play-toggle[data-playing="true"] .pause-icon { display: block !important; }
-          .control-button.play-toggle svg.play-icon, .control-button.play-toggle svg.pause-icon { width: 21px !important; height: 21px !important; fill: #fff !important; color: #fff !important; opacity: 1 !important; visibility: visible !important; flex: 0 0 21px; }
+          .control-button svg { width: 20px; height: 20px; fill: currentColor; }
+          .control-button.play-toggle { width: 40px; height: 40px; background: #ffffff2e; }
+          .control-button.play-toggle:hover { background: #ffffff42; }
+          .control-button.play-toggle svg { width: 22px; height: 22px; }
+          .play-toggle .pause-icon, .play-toggle[data-playing="true"] .play-icon { display: none; }
+          .play-toggle[data-playing="true"] .pause-icon { display: block; }
+          .bar-collapse { display: none; }
+          .progress-row { display: flex; align-items: center; gap: 8px; color: #d3e0e6; font-size: 10px; font-variant-numeric: tabular-nums; }
+          .progress-track { flex: 1; height: 3px; overflow: hidden; border-radius: 999px; background: #ffffff40; }
+          #progress-fill { display: block; width: 0; height: 100%; border-radius: inherit; background: #fff; transition: width .12s linear; }
           [hidden] { display: none !important; }
-          @media (max-height: 280px) { #island.expanded .expanded-view { padding: 7px 10px; gap: 4px; } #island.expanded .track-header { min-height: 50px; } #island.expanded .vinyl-large { width: 46px; height: 46px; } #island.expanded .lyrics-window, #island.expanded .track-fallback { min-height: 48px; } #island.expanded .controls { min-height: 28px; } }
-          @media (max-width: 310px) { .collapsed-view { gap: 7px; padding-inline: 7px; } .vinyl-small { width: 38px; height: 38px; } .track-header { gap: 7px; } .expanded-view { padding-inline: 10px; } }
+
+          /* If Spotify refuses the resize, keep the expanded card usable in a smaller window. */
+          @media (max-width: 420px) { #island.expanded .left-col { display: none; } }
+          @media (max-height: 300px) { #island.expanded .row-top { display: none; } #island.expanded .expanded-view { padding: 6px; justify-content: center; } #island.expanded .now-bar { height: auto; gap: 6px; padding: 6px 12px; } #island.expanded .bar-collapse { display: inline-flex; } }
+          @media (max-height: 130px) { #island.expanded .progress-row { display: none; } }
           @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; } .vinyl { animation: none !important; } }
         </style>
       </head>
@@ -891,33 +960,48 @@
             </div>
             <button type="button" class="island-button" data-action="toggle-view" data-expanded="false" aria-label="Expand lyrics" title="Expand lyrics"><svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M3.25 6L8 10.75 12.75 6" /></svg></button>
           </section>
+          <div class="card-backdrop" aria-hidden="true"><img id="backdrop-art" data-artwork alt=""></div>
           <section id="expanded-view" class="expanded-view" aria-label="Expanded player">
-            <header id="track-header" class="track-header" title="Drag to move or click to collapse">
-              <span class="art-frame header-cover">${ART_PLACEHOLDER}<img id="large-cover" data-artwork alt="Album artwork"></span>
-              <div class="track-info"><div id="track-title" class="track-title">Loading track…</div><div id="track-artist" class="track-artist"></div><div id="track-album" class="track-album"></div></div>
-              <button type="button" class="island-button" data-action="toggle-view" data-expanded="false" aria-label="Collapse lyrics" title="Collapse lyrics"><svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M3.25 6L8 10.75 12.75 6" /></svg></button>
-            </header>
-            <div id="lyrics-loading" class="state-message">Loading lyrics…</div>
-            <section id="lyrics-panel" class="lyrics-window" aria-label="Lyrics"><div id="lyrics-list"></div></section>
-            <section id="track-fallback" class="track-fallback" aria-label="Track information" hidden><div class="fallback-label">TRACK INFORMATION</div><div id="fallback-album"></div></section>
-            <div class="progress-row" aria-label="Playback progress"><span id="elapsed">0:00</span><div class="progress-track"><span id="progress-fill"></span></div><span id="duration">0:00</span></div>
-            <nav class="controls" aria-label="Playback controls">
-              <button type="button" class="control-button" data-action="previous" aria-label="Previous track"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M2.5 2.5H5v13H2.5zM15.5 3v12L5.5 9z" /></svg></button>
-              <button type="button" id="play-toggle" class="control-button play-toggle" data-playing="false" data-action="toggle" aria-label="Play"><svg id="play-icon" class="play-icon" width="21" height="21" viewBox="0 0 18 18" aria-hidden="true"><path d="M3.5 2.5v13L14.5 9z" /></svg><svg id="pause-icon" class="pause-icon" width="21" height="21" viewBox="0 0 18 18" aria-hidden="true"><path d="M4.5 2.5h3v13h-3zM10.5 2.5h3v13h-3z" /></svg></button>
-              <button type="button" class="control-button" data-action="next" aria-label="Next track"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M13 2.5h2.5v13H13zM2.5 3v12l10-6z" /></svg></button>
-            </nav>
+            <div class="row-top">
+              <div class="left-col">
+                <span class="art-frame large-cover">${ART_PLACEHOLDER}<img id="large-cover" data-artwork alt="Album artwork"></span>
+                <div id="next-chip" class="next-chip glass" hidden><span class="next-tag">NEXT</span><span id="next-name" class="next-name"></span><svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3.25L10.75 8 6 12.75" /></svg></div>
+              </div>
+              <section class="lyrics-card glass" aria-label="Lyrics">
+                <div class="lyrics-head"><span class="lyrics-heading">Lyrics</span>${COLLAPSE_BUTTON("")}</div>
+                <div id="lyrics-loading" class="state-message">Loading lyrics…</div>
+                <div id="lyrics-panel" class="lyrics-scroll"><div id="lyrics-list"></div></div>
+                <div id="track-fallback" class="track-fallback" hidden><div class="fallback-label">NO LYRICS FOR THIS TRACK</div><div id="fallback-album"></div></div>
+              </section>
+            </div>
+            <footer class="now-bar glass">
+              <div class="bar-top">
+                <div class="now-meta"><div id="track-title" class="track-title">Loading track…</div><div id="track-artist" class="track-artist"></div></div>
+                <nav class="controls" aria-label="Playback controls">
+                  <button type="button" class="control-button" data-action="previous" aria-label="Previous track"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 5h2v14H6zM20 5v14L9.5 12z" /></svg></button>
+                  <button type="button" id="play-toggle" class="control-button play-toggle" data-playing="false" data-action="toggle" aria-label="Play"><svg class="play-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 4.5v15L19.5 12z" /></svg><svg class="pause-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 4h4v16H7zM13 4h4v16h-4z" /></svg></button>
+                  <button type="button" class="control-button" data-action="next" aria-label="Next track"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16 5h2v14h-2zM4 5v14l10.5-7z" /></svg></button>
+                </nav>
+                ${COLLAPSE_BUTTON("bar-collapse")}
+              </div>
+              <div class="progress-row" aria-label="Playback progress"><span id="elapsed">0:00</span><div class="progress-track"><span id="progress-fill"></span></div><span id="duration">0:00</span></div>
+            </footer>
           </section>
         </main>
       </body>`;
 
     const docWindow = state.pipWindow;
     const island = doc.getElementById("island");
+    const supportsBackdrop = Boolean(docWindow.CSS?.supports?.("backdrop-filter", "blur(1px)") ||
+      docWindow.CSS?.supports?.("-webkit-backdrop-filter", "blur(1px)"));
+    console.info("[Popliyric] backdrop-filter supported in PiP:", supportsBackdrop, "(the glass look does not depend on it)");
     let dragStart = null;
     let suppressClickUntil = 0;
 
     function makeDragHandle(element, clickToggles) {
       element.addEventListener("pointerdown", (event) => {
-        if (event.button !== 0 || event.target.closest("button")) return;
+        // Buttons stay clickable and the lyrics list stays scrollable/selectable.
+        if (event.button !== 0 || event.target.closest("button, .lyrics-scroll")) return;
         dragStart = { pointerId: event.pointerId, x: event.screenX, y: event.screenY, moved: false };
         suppressClickUntil = 0;
         element.setPointerCapture(event.pointerId);
@@ -928,7 +1012,6 @@
         const dy = event.screenY - dragStart.y;
         if (!dragStart.moved && Math.hypot(dx, dy) < 4) return;
         dragStart.moved = true;
-        didDrag = true;
         dragStart.x = event.screenX;
         dragStart.y = event.screenY;
         try { docWindow.moveBy(dx, dy); } catch (_) {
@@ -951,7 +1034,7 @@
     }
 
     makeDragHandle(doc.getElementById("collapsed-view"), true);
-    makeDragHandle(doc.getElementById("track-header"), true);
+    makeDragHandle(doc.getElementById("expanded-view"), false);
     doc.querySelectorAll("[data-action='toggle-view']").forEach((button) => {
       button.addEventListener("click", (event) => {
         event.stopPropagation();
