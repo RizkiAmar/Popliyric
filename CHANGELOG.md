@@ -1,5 +1,23 @@
 # Changelog
 
+## [2.0.0] - Unreleased
+
+Redesigned player interface. Lyric, track, and playback logic are unchanged.
+
+### Changed
+
+- Rebuilt the compact pill (390 x 82 window): square album artwork on the left, a grooved vinyl with an artwork label sliding out from behind it and spinning while music plays, the current lyric centered on up to two lines with the existing line wipe, and an expand chevron on the right.
+- Player colors now use a horizontal gradient of two or three dominant artwork colors, darkened to keep white text readable, with a neutral gradient when no artwork is available.
+- Rebuilt the expanded view (460 x 352 window): 150 px artwork with a **Next** chip for the upcoming track, a glass **Lyrics** panel with a collapse button and a blue marker on the active line, and a glass bottom bar with title, artist, playback controls, and progress.
+- The glass effect is drawn from blurred artwork behind semi-transparent panels, so it does not depend on `backdrop-filter` support in the PiP window.
+- The player expands and collapses only from the chevron buttons. Clicking elsewhere no longer toggles the view; dragging still moves the window.
+- Tracks without lyrics show the title and artist in the pill and a short notice in the Lyrics panel. Tracks without artwork show a neutral placeholder and a plain vinyl.
+
+### Fixed
+
+- Lyrics that arrive on a retry for the same track are now displayed instead of leaving an empty list.
+- Centering the active lyric no longer scrolls the whole expanded card.
+
 ## [1.0.0] - 2026-11-13
 
 Initial stable release.

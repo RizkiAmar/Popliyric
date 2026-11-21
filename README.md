@@ -4,13 +4,12 @@ Popliyric is a Spicetify extension that opens a compact, floating lyric player i
 
 ## Features
 
-- Synchronized lyrics with a vertical highlight that follows the current line.
-- Unsynchronized lyrics shown without the timed highlight.
-- Track and album details when Spotify does not provide lyrics.
-- Album artwork inside a vinyl record animation.
-- Player colors adapted to the album artwork.
-- Previous, Play/Pause, and Next controls, plus playback progress.
-- Compact and expanded player views.
+- **Compact pill:** square album artwork with a vinyl record sliding out from behind it (it spins while music plays), the current lyric line in the middle, and an expand button.
+- **Expanded view:** large artwork, a **Next** chip showing the upcoming track, a glass **Lyrics** panel that follows the current line, and a bottom bar with title, artist, Previous, Play/Pause, Next, and playback progress.
+- Synchronized lyrics with a vertical highlight that follows the current line; unsynchronized lyrics are shown without it.
+- Title and artist when Spotify does not provide lyrics.
+- A background gradient built from two or three colors of the album artwork, kept dark enough for readable white text.
+- Respects the system **reduce motion** setting (the vinyl stops spinning and transitions are skipped).
 
 ## Install from Spicetify Marketplace
 
@@ -54,9 +53,10 @@ spicetify apply
 
 1. Play a track in Spotify.
 2. Select the **Popliyric** waveform button in the top bar.
-3. Click the player to expand or collapse it.
-4. Use the playback controls in the expanded view.
-5. Select the Popliyric button again or close the PiP window to dismiss the player.
+3. Select the chevron on the right of the pill to expand the player, and the chevron in the **Lyrics** panel to collapse it.
+4. Drag the pill or the card to move the window.
+5. Use the playback controls in the expanded view.
+6. Select the Popliyric button again or close the PiP window to dismiss the player.
 
 ## Requirements
 
@@ -80,6 +80,14 @@ spicetify apply
 
 - Spotify may not provide lyrics for the selected track. Popliyric shows track details when lyrics are unavailable.
 - The vertical highlight requires timed lyrics. Unsynchronized lyrics are shown without it.
+
+**The player does not change size when expanding**
+
+- Some Spotify versions block PiP resizing. Popliyric shows a notification; resize the window by hand and select the chevron again. In a small window the expanded view keeps the playback bar and a collapse button.
+
+**The Next chip is missing**
+
+- The chip appears only when Spotify reports an upcoming track in the queue.
 
 ## Known limitations
 
